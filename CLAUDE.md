@@ -8,18 +8,29 @@ Task OS is Justin's personal task management system: a local SQLite database wit
 
 ```
 ~/IdeaProjects/task-os/
-├── api.js                  ← HTTP backend (was web.js), port 3456
+├── electron-main.js        ← Electron main process; spawns api.js + mcp/http-server.js via utilityProcess
+├── api-entry.cjs           ← CJS shim so utilityProcess.fork() can load ESM api.js
+├── api.js                  ← HTTP backend, port 3456
+├── s3.js                   ← S3/R2 attachment helpers
 ├── mcp/
-│   └── server.js           ← MCP server (connected to Claude Code CLI)
+│   ├── http-server.js      ← MCP HTTP server, port 3457 (primary, used by Claude Code)
+│   ├── http-server-entry.cjs ← CJS shim for utilityProcess.fork()
+│   ├── server.js           ← Legacy stdio MCP server (kept as fallback)
+│   ├── db.js               ← SQLite helpers, schema migrations, recurrence logic
+│   └── tools/              ← MCP tool definitions (tasks, triage, briefing, notes, etc.)
 ├── ui/                     ← Vite + React + TypeScript frontend, port 5173
 │   └── src/
-│       ├── components/     ← TaskList, TaskRow, TaskSection, TaskDetail, etc.
+│       ├── components/     ← TaskList, TaskRow, TaskSection, DetailPanel, Settings, etc.
 │       ├── lib/            ← constants, utilities
+│       ├── mdpdf/          ← Markdown editor/PDF export overlay
 │       └── api.ts          ← frontend API client
 ├── plan/                   ← Planning docs
 │   ├── EVOLUTION.md        ← Running log of shipped features and known gaps
 │   ├── ARCHITECTURE.md     ← v2 vision (Automerge, Tauri, sync relay)
 │   └── FUTURE_IDEAS.md     ← Deferred ideas
+├── electron-builder.yml    ← Packaging config (DMG, signing, publish)
+├── entitlements.mac.plist  ← macOS hardened runtime entitlements
+├── scripts/notarize.mjs    ← Apple notarization hook (runs after electron-builder signs)
 └── assets/                 ← App icon source files
 ```
 
@@ -52,9 +63,44 @@ SQLite at `~/IdeaProjects/task-os/db/tasks.db`. Schema is managed via inline mig
 
 ## MCP Server
 
-Registered in `~/.claude.json` under `mcpServers.task-os`. Restart Claude Code to pick up server changes.
+Runs as an HTTP server on port **3457** (StreamableHTTP transport). Registered in `~/.claude.json` as:
+```json
+{ "type": "http", "url": "http://localhost:3457/mcp" }
+```
 
-The MCP tools are the primary interface for Claude to interact with Task OS during PM sessions. All task management in the project-manager repo goes through these tools.
+The port and `~/.claude.json` entry can be changed in the app's Settings panel (MCP Server section) — it saves the port and rewrites the entry automatically. Restart Claude Code after changing.
+
+The MCP tools are the primary interface for Claude to interact with Task OS during PM sessions. All task management goes through these tools.
+
+---
+
+## Git & Release Workflow
+
+**Repo:** `github.com/pirateandfox/task-os`
+
+**Branch strategy:**
+- `develop` — all day-to-day work and commits go here
+- `main` — stable releases only; never commit directly
+
+**Cutting a release:**
+```bash
+# 1. Merge develop → main
+git checkout main && git merge develop && git push origin main
+
+# 2. Tag the release (triggers GitHub Actions build)
+git tag v1.0.1 && git push origin v1.0.1
+
+# 3. Return to develop
+git checkout develop
+```
+
+Tagging triggers the GitHub Actions workflow (`.github/workflows/release.yml`) which:
+- Builds the macOS DMG + ZIP (arm64 + x64)
+- Code-signs with Developer ID certificate
+- Notarizes via Apple notarytool
+- Publishes to GitHub Releases
+
+The in-app auto-updater (`electron-updater`) checks GitHub Releases on launch and prompts to install when a new version is available.
 
 ---
 
