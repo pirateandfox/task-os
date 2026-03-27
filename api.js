@@ -608,8 +608,16 @@ function getTasksForDate(date) {
     for (const l of habitLogs) habitLogMap[l.habit_id] = l;
     const habits = todayHabits.map(h => ({ ...h, today_log: habitLogMap[h.id] ?? null }));
 
+    const timeSnoozed = attachSubtasks(db, db.prepare(`
+      SELECT * FROM tasks
+      WHERE status = 'snoozed' AND parent_id IS NULL AND task_type = 'task'
+        AND strftime('%Y-%m-%d', due_date) = ?
+        AND surface_after > strftime('%Y-%m-%d %H:%M', 'now', 'localtime')
+      ORDER BY surface_after ASC
+    `).all(date));
+
     stampAgentJobs(db, overdue, dueToday, active);
-    return { view: 'today', date, overdue, dueToday, active, doneToday, events, reminders, habits };
+    return { view: 'today', date, overdue, dueToday, active, doneToday, timeSnoozed, events, reminders, habits };
 
   } else if (date > today) {
     const scheduled = attachSubtasks(db, db.prepare(`

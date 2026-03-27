@@ -117,6 +117,11 @@ export default function TaskRow({ task, showContext = true, draggable = false, s
             {task.energy_required && (
               <span className="energy">{ENERGY_ICONS[task.energy_required] ?? ''} {task.energy_required}</span>
             )}
+            {task.surface_after && !isDone && (
+              <span className="snooze-time" title={`Snoozed until ${task.surface_after}`}>
+                💤 {new Date(task.surface_after).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+              </span>
+            )}
             {task.due_date && !isDone && (
               <span className={`due-date due-date--${urgency}`}>
                 {urgency === 'overdue' ? '⚠ ' : urgency === 'imminent' ? '● ' : ''}{task.due_date}

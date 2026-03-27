@@ -179,7 +179,7 @@ export default function App() {
           onTerminalToggle={() => setTerminalOpen(o => !o)}
           onChatWithDoc={async (fp) => {
             const settings = await fetchSettings().catch(() => ({} as Record<string, string>))
-            const agentCmd = settings.defaultAgentCommand || 'claude'
+            const agentCmd = settings.defaultAgentCommand || 'claude --dangerously-skip-permissions'
             const dir = fp.substring(0, fp.lastIndexOf('/'))
             const name = fp.split('/').pop() ?? fp
             setTerminalCommand(`cd "${dir}" && ${agentCmd} "I want to work on ${name}"\r`)
@@ -195,7 +195,7 @@ export default function App() {
           onTerminalToggle={() => setTerminalOpen(o => !o)}
           onChatWithDoc={async (fp) => {
             const settings = await fetchSettings().catch(() => ({} as Record<string, string>))
-            const agentCmd = settings.defaultAgentCommand || 'claude'
+            const agentCmd = settings.defaultAgentCommand || 'claude --dangerously-skip-permissions'
             const dir = fp.substring(0, fp.lastIndexOf('/'))
             const name = fp.split('/').pop() ?? fp
             setTerminalCommand(`cd "${dir}" && ${agentCmd} "I want to work on ${name}"\r`)

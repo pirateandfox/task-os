@@ -63,6 +63,7 @@ function FutureView({ data, selectedId, onSelect, onMeetingOpen, onMutate }: Omi
 
 function PriorityView({ data, selectedId, onSelect, onMeetingOpen, onMutate }: Omit<Props, 'view'>) {
   const allTasks = [...(data.overdue ?? []), ...(data.dueToday ?? []), ...(data.active ?? [])]
+  const [showSnoozed, setShowSnoozed] = useState(false)
 
   if (data.view === 'today') return (
     <>
@@ -87,6 +88,19 @@ function PriorityView({ data, selectedId, onSelect, onMeetingOpen, onMutate }: O
       {allTasks.length > 0 && (
         <TaskSection title="Tasks" icon="📋" tasks={allTasks} draggable groupKey="priority" selectedId={selectedId} onSelect={onSelect} onMutate={onMutate} />
       )}
+      {(data.timeSnoozed?.length ?? 0) > 0 && (() => {
+        const count = data.timeSnoozed!.length
+        return (
+          <>
+            <button className="time-snoozed-toggle" onClick={() => setShowSnoozed(s => !s)}>
+              {showSnoozed ? '▾' : '▸'} 💤 {count} snoozed task{count !== 1 ? 's' : ''}
+            </button>
+            {showSnoozed && (
+              <TaskSection title="" icon="" tasks={data.timeSnoozed!} selectedId={selectedId} onSelect={onSelect} onMutate={onMutate} />
+            )}
+          </>
+        )
+      })()}
       <TaskSection title="Done Today" icon="✅" tasks={data.doneToday ?? []} selectedId={selectedId} onSelect={onSelect} onMutate={onMutate} />
       {allTasks.length === 0 && !data.events?.length && <div className="empty-state">Nothing to show for today.</div>}
     </>
