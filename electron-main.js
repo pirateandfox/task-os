@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, nativeImage, dialog, utilityProcess } from 'electron'
+import { app, BrowserWindow, shell, nativeImage, dialog, utilityProcess, Menu, ipcMain } from 'electron'
 import { createServer } from 'net'
 import { fileURLToPath } from 'url'
 import path from 'path'
@@ -160,6 +160,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, 'preload.cjs'),
     },
   })
 
@@ -176,6 +177,86 @@ function createWindow() {
   }
 }
 
+// ── Menu ──────────────────────────────────────────────────────────────────────
+
+function setupMenu() {
+  const template = [
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    },
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'Open File…',
+          accelerator: 'CmdOrCtrl+O',
+          async click() {
+            const win = BrowserWindow.getFocusedWindow()
+            if (!win) return
+            const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+              properties: ['openFile'],
+              filters: [
+                { name: 'Supported Files', extensions: ['md', 'html', 'eml'] },
+                { name: 'All Files', extensions: ['*'] },
+              ],
+            })
+            if (!canceled && filePaths.length > 0) {
+              win.webContents.send('open-file', filePaths[0])
+            }
+          },
+        },
+      ],
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+      ],
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        { type: 'separator' },
+        { role: 'front' },
+      ],
+    },
+  ]
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 
 app.whenReady().then(async () => {
@@ -188,6 +269,7 @@ app.whenReady().then(async () => {
     : await ensureUserData()
 
   await startBackends(dbDir)
+  setupMenu()
   createWindow()
   setupAutoUpdater()
 

@@ -8,6 +8,7 @@ directories:
 
 files:
   - electron-main.js
+  - preload.cjs
   - api-entry.cjs
   - api.js
   - s3.js

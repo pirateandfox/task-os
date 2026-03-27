@@ -52,6 +52,16 @@ export default function App() {
     return () => clearInterval(interval)
   }, [taskData, date, load])
 
+  // File > Open File… from native menu
+  useEffect(() => {
+    const api = (window as any).electronAPI
+    if (!api) return
+    api.onOpenFile((filePath: string) => {
+      if (filePath.endsWith('.md')) setMdPath(filePath)
+      else setPreviewPath(filePath)
+    })
+  }, [])
+
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
