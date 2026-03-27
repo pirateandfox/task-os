@@ -22,10 +22,13 @@ files:
   - "!**/*.md"
   - "!assets/build-icon.mjs"
 
-# These must be outside the asar archive so they can be spawned / loaded as native modules
+# Backend JS files must be outside the asar so ESM dynamic imports resolve correctly
+# (Electron patches require() for asar but NOT ESM import())
 asarUnpack:
   - api-entry.cjs
-  - mcp/http-server-entry.cjs
+  - api.js
+  - s3.js
+  - mcp/**/*
   - node_modules/better-sqlite3/**/*
   - node_modules/node-pty/**/*
 
