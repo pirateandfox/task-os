@@ -120,7 +120,7 @@ window.addEventListener('load', function() {
 }
 
 export function buildPagedExportHTML(
-  markdown: string,
+  _markdown: string,
   style: StyleConfig,
   pages: PageData[],
   pageDims: { width: number; height: number },

@@ -52,7 +52,7 @@ function FutureView({ data, selectedId, onSelect, onMeetingOpen, onMutate }: Omi
             {showSnoozed ? '▾' : '▸'} {snoozedCount} time-deferred task{snoozedCount !== 1 ? 's' : ''}
           </button>
           {showSnoozed && (
-            <TaskSection title="" tasks={data.timeSnoozed ?? []} selectedId={selectedId} onSelect={onSelect} onMutate={onMutate} />
+            <TaskSection title="" icon="" tasks={data.timeSnoozed ?? []} selectedId={selectedId} onSelect={onSelect} onMutate={onMutate} />
           )}
         </>
       )}

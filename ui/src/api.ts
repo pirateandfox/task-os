@@ -227,4 +227,5 @@ export const api = {
   createSubtask:   (parentId: string, title: string) => post('/create-subtask', { parent_id: parentId, title }),
   createTask:      (body: Partial<Task> & { title: string }) => post('/create-task-json', body as Record<string, unknown>),
   deleteTask:      (taskId: string) => fetch(`/api/task/${taskId}`, { method: 'DELETE' }),
+  updateNotes:     (taskId: string, notes: string) => post(`/api/task/${taskId}`, { notes }),
 }
