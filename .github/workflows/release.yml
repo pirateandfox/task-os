@@ -19,7 +19,7 @@ jobs:
           cache: 'npm'
 
       - name: Install setuptools (for node-gyp / Python 3.12+)
-        run: pip3 install setuptools
+        run: pip3 install setuptools --break-system-packages
 
       - name: Install root dependencies
         run: npm ci
@@ -85,7 +85,7 @@ jobs:
           cache: 'npm'
 
       - name: Install setuptools (for node-gyp / Python 3.12+)
-        run: pip3 install setuptools
+        run: pip3 install setuptools --break-system-packages
 
       - name: Install root dependencies
         run: npm ci
