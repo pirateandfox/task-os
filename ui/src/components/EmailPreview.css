@@ -62,6 +62,12 @@
 .ep-btn.active { background: #0a0a0a; color: #fff; border-color: #555; }
 .ep-btn-w { opacity: 0.5; margin-left: 4px; }
 
+.ep-chat-btn {
+  color: #60a5fa;
+  border-color: #1d4ed8;
+}
+.ep-chat-btn:hover { color: #93c5fd; border-color: #3b82f6; }
+
 .ep-width-label {
   font-size: 12px;
   color: var(--muted);
@@ -85,6 +91,22 @@
 .ep-body {
   flex: 1;
   display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.ep-editor-panel {
+  width: 420px;
+  flex-shrink: 0;
+  border-right: 1px solid #2b2b2b;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.ep-preview-panel {
+  flex: 1;
+  display: flex;
   justify-content: center;
   align-items: flex-start;
   overflow-y: auto;
@@ -106,7 +128,7 @@
 .ep-error {
   color: var(--muted);
   font-size: 14px;
-  margin-top: 60px;
+  margin: 60px auto;
 }
 
 .ep-error { color: #f87171; }

@@ -9,6 +9,9 @@ import './MdView.css'
 interface Props {
   filePath: string
   onClose: () => void
+  terminalOpen: boolean
+  onTerminalToggle: () => void
+  onChatWithDoc: (command: string) => void
 }
 
 function getConfigPath(filePath: string): string {
@@ -42,7 +45,7 @@ async function fileExists(path: string): Promise<boolean> {
   return res.ok
 }
 
-export default function MdView({ filePath, onClose }: Props) {
+export default function MdView({ filePath, onClose, terminalOpen, onTerminalToggle, onChatWithDoc }: Props) {
   const [markdown, setMarkdown] = useState('')
   const [style, setStyle] = useState<StyleConfig>(DEFAULT_STYLE)
   const [sidebarWidth, setSidebarWidth] = useState(260)
@@ -274,13 +277,43 @@ export default function MdView({ filePath, onClose }: Props) {
 
         <div className="mdview-toolbar-sep" />
 
+        <button
+          className="mdview-toolbar-btn"
+          onClick={onTerminalToggle}
+          title="Toggle terminal (Ctrl+`)"
+          style={{ color: terminalOpen ? '#3b82f6' : undefined }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" />
+          </svg>
+          Terminal
+        </button>
+
+        <button
+          className="mdview-toolbar-btn"
+          onClick={() => {
+            const dir = filePath.substring(0, filePath.lastIndexOf('/'))
+            const name = filePath.split('/').pop() ?? filePath
+            onChatWithDoc(`cd "${dir}" && claude "I want to work on ${name}"\r`)
+          }}
+          title="Open claude in this file's folder"
+          style={{ color: '#60a5fa' }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+          Chat
+        </button>
+
+        <div className="mdview-toolbar-sep" />
+
         <button className="mdview-toolbar-btn mdview-close-btn" onClick={onClose} title="Close (Esc)">
           ✕ Close
         </button>
       </div>
 
       {/* Three-panel layout */}
-      <div className="mdview-panels">
+      <div className="mdview-panels" style={{ paddingBottom: terminalOpen ? 300 : 0 }}>
         {showSidebar && (
           <>
             <div style={{ width: sidebarWidth, flexShrink: 0, overflow: 'hidden' }}>

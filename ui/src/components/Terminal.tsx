@@ -7,9 +7,11 @@ import './Terminal.css'
 interface Props {
   open: boolean
   onClose: () => void
+  pendingCommand?: string | null
+  onCommandConsumed?: () => void
 }
 
-export default function Terminal({ open, onClose }: Props) {
+export default function Terminal({ open, onClose, pendingCommand, onCommandConsumed }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<XTerm | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
@@ -83,6 +85,27 @@ export default function Terminal({ open, onClose }: Props) {
       setTimeout(() => { fitRef.current?.fit(); termRef.current?.focus() }, 250)
     }
   }, [open])
+
+  // Fire a one-shot command when the terminal opens with a pending command
+  useEffect(() => {
+    if (!open || !pendingCommand) return
+    const send = () => {
+      wsRef.current?.send(JSON.stringify({ type: 'input', data: pendingCommand }))
+      onCommandConsumed?.()
+    }
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      setTimeout(send, 400)
+    } else {
+      // Terminal not connected yet — wait for it
+      const interval = setInterval(() => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          clearInterval(interval)
+          setTimeout(send, 200)
+        }
+      }, 100)
+      return () => clearInterval(interval)
+    }
+  }, [open, pendingCommand])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

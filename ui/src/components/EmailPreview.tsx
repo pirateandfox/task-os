@@ -1,9 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
+import { HtmlEditor } from './HtmlEditor'
 import './EmailPreview.css'
 
 interface Props {
   filePath: string
   onClose: () => void
+  terminalOpen: boolean
+  onTerminalToggle: () => void
+  onChatWithDoc: (command: string) => void
 }
 
 function injectPlaceholders(html: string): string {
@@ -30,38 +34,79 @@ const VIEWPORTS = [
   { label: 'Wide', w: 900 },
 ]
 
-export default function EmailPreview({ filePath, onClose }: Props) {
+async function readFile(path: string): Promise<string> {
+  const res = await fetch(`/api/preview/file?path=${encodeURIComponent(path)}`)
+  if (!res.ok) throw new Error(`${res.status}`)
+  return res.text()
+}
+
+async function writeFile(path: string, contents: string): Promise<void> {
+  const res = await fetch('/api/write-file', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, contents }),
+  })
+  if (!res.ok) throw new Error(`${res.status}`)
+}
+
+export default function EmailPreview({ filePath, onClose, terminalOpen, onTerminalToggle, onChatWithDoc }: Props) {
   const [width, setWidth] = useState(600)
+  const [html, setHtml] = useState('')
   const [blobUrl, setBlobUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [showEditor, setShowEditor] = useState(false)
+  const [isDirty, setIsDirty] = useState(false)
   const blobRef = useRef<string | null>(null)
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const loadedRef = useRef(false)
 
+  // Load file
   useEffect(() => {
+    loadedRef.current = false
     setError(null)
-    setBlobUrl(null)
-    fetch(`/api/preview/file?path=${encodeURIComponent(filePath)}`)
-      .then(r => {
-        if (!r.ok) throw new Error(`${r.status}`)
-        return r.text()
-      })
-      .then(html => {
-        const processed = injectPlaceholders(html)
-        const blob = new Blob([processed], { type: 'text/html' })
-        if (blobRef.current) URL.revokeObjectURL(blobRef.current)
-        const url = URL.createObjectURL(blob)
-        blobRef.current = url
-        setBlobUrl(url)
+    setIsDirty(false)
+    readFile(filePath)
+      .then(content => {
+        setHtml(content)
+        loadedRef.current = true
       })
       .catch(e => setError(`Could not load file: ${e.message}`))
     return () => { if (blobRef.current) URL.revokeObjectURL(blobRef.current) }
   }, [filePath])
 
+  // Rebuild blob URL whenever html changes
+  useEffect(() => {
+    const processed = injectPlaceholders(html)
+    const blob = new Blob([processed], { type: 'text/html' })
+    if (blobRef.current) URL.revokeObjectURL(blobRef.current)
+    const url = URL.createObjectURL(blob)
+    blobRef.current = url
+    setBlobUrl(url)
+  }, [html])
+
+  // Autosave on html change (1s debounce) — skip until after initial load
+  useEffect(() => {
+    if (!loadedRef.current) return
+    setIsDirty(true)
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
+    autosaveTimer.current = setTimeout(() => {
+      writeFile(filePath, html).then(() => setIsDirty(false)).catch(console.error)
+    }, 1000)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [html])
+
+  function handleChatWithDoc() {
+    const dir = filePath.substring(0, filePath.lastIndexOf('/'))
+    const filename = filePath.split('/').pop() ?? filePath
+    onChatWithDoc(`cd "${dir}" && claude "I want to work on ${filename}"\r`)
+  }
+
   const filename = filePath.split('/').pop() ?? filePath
 
   return (
-    <div className="ep-overlay">
+    <div className="ep-overlay" style={{ paddingBottom: terminalOpen ? 300 : 0 }}>
       <div className="ep-toolbar">
-        <span className="ep-filename">{filename}</span>
+        <span className="ep-filename">{filename}{isDirty ? ' •' : ''}</span>
         <div className="ep-divider" />
         <div className="ep-btn-group">
           {VIEWPORTS.map(v => (
@@ -73,17 +118,42 @@ export default function EmailPreview({ filePath, onClose }: Props) {
           ))}
         </div>
         <span className="ep-width-label">{width}px</span>
+        <div className="ep-divider" />
+        <button
+          className={`ep-btn ${showEditor ? 'active' : ''}`}
+          onClick={() => setShowEditor(v => !v)}
+          title="Toggle HTML editor"
+        >Editor</button>
+        <div className="ep-divider" />
+        <button
+          className={`ep-btn ${terminalOpen ? 'active' : ''}`}
+          onClick={onTerminalToggle}
+          title="Toggle terminal (Ctrl+`)"
+        >Terminal</button>
+        <button className="ep-btn ep-chat-btn" onClick={handleChatWithDoc} title="Open claude in this file's folder">
+          Chat
+        </button>
         <button className="ep-close-btn" onClick={onClose}>✕ Close</button>
       </div>
+
       <div className="ep-body">
         {error && <div className="ep-error">{error}</div>}
         {!error && !blobUrl && <div className="ep-loading">Loading…</div>}
-        {blobUrl && (
-          <iframe
-            src={blobUrl}
-            className="ep-iframe"
-            style={{ width: `${width}px` }}
-          />
+        {!error && blobUrl && (
+          <>
+            {showEditor && (
+              <div className="ep-editor-panel">
+                <HtmlEditor value={html} onChange={setHtml} />
+              </div>
+            )}
+            <div className="ep-preview-panel">
+              <iframe
+                src={blobUrl}
+                className="ep-iframe"
+                style={{ width: `${width}px` }}
+              />
+            </div>
+          </>
         )}
       </div>
     </div>

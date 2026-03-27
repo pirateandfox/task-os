@@ -24,6 +24,7 @@ export default function App() {
   const [taskData, setTaskData]     = useState<TaskData | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [terminalOpen, setTerminalOpen] = useState(false)
+  const [terminalCommand, setTerminalCommand] = useState<string | null>(null)
   const [previewPath, setPreviewPath]   = useState<string | null>(null)
   const [mdPath, setMdPath]             = useState<string | null>(null)
   const [dailyNoteOpen, setDailyNoteOpen] = useState(false)
@@ -167,12 +168,26 @@ export default function App() {
       <Terminal
         open={terminalOpen}
         onClose={() => setTerminalOpen(false)}
+        pendingCommand={terminalCommand}
+        onCommandConsumed={() => setTerminalCommand(null)}
       />
       {previewPath && (
-        <EmailPreview filePath={previewPath} onClose={() => setPreviewPath(null)} />
+        <EmailPreview
+          filePath={previewPath}
+          onClose={() => setPreviewPath(null)}
+          terminalOpen={terminalOpen}
+          onTerminalToggle={() => setTerminalOpen(o => !o)}
+          onChatWithDoc={cmd => { setTerminalCommand(cmd); setTerminalOpen(true) }}
+        />
       )}
       {mdPath && (
-        <MdView filePath={mdPath} onClose={() => setMdPath(null)} />
+        <MdView
+          filePath={mdPath}
+          onClose={() => setMdPath(null)}
+          terminalOpen={terminalOpen}
+          onTerminalToggle={() => setTerminalOpen(o => !o)}
+          onChatWithDoc={cmd => { setTerminalCommand(cmd); setTerminalOpen(true) }}
+        />
       )}
     </div>
     </ContextsProvider>
