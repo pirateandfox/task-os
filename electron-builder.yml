@@ -68,5 +68,6 @@ publish:
   provider: github
   owner: pirateandfox
   repo: task-os
+  releaseType: release
 
 afterSign: scripts/notarize.mjs
