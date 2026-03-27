@@ -89,7 +89,21 @@ async function startBackends(dbDir) {
       env,
     })
     apiProcess.on('exit', (code, signal) => {
-      if (signal !== 'SIGTERM' && code !== 0) console.error(`api exited: code=${code} signal=${signal}`)
+      if (signal !== 'SIGTERM' && code !== 0) {
+        console.error(`api exited: code=${code} signal=${signal}`)
+        if (!isDev) {
+          dialog.showMessageBox({
+            type: 'error',
+            title: 'Task OS — Backend Crashed',
+            message: 'The API process exited unexpectedly.',
+            detail: `Exit code: ${code}. Tasks cannot be loaded until the app is restarted.\n\nIf this keeps happening, please report it.`,
+            buttons: ['Restart Now', 'Dismiss'],
+            defaultId: 0,
+          }).then(({ response }) => {
+            if (response === 0) { app.relaunch(); app.quit() }
+          })
+        }
+      }
       apiProcess = null
     })
   }

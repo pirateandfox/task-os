@@ -29,6 +29,10 @@ export default function Terminal({ open, onClose, pendingCommand, onCommandConsu
         if (msg.type === 'exit') ws.close()
       } catch { /* ignore */ }
     }
+    ws.onerror = () => {
+      termRef.current?.write('\r\n\x1b[31mCould not connect to terminal service.\x1b[0m\r\n')
+      termRef.current?.write('\x1b[33mThe backend API may not be running. Try restarting the app.\x1b[0m\r\n')
+    }
     ws.onclose = () => { wsRef.current = null }
 
     // Send auto-run command if configured
