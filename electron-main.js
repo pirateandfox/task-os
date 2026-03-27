@@ -121,28 +121,57 @@ async function startBackends(dbDir) {
 
 // ── Auto-updater ──────────────────────────────────────────────────────────────
 
+let _autoUpdater = null
+
+async function getAutoUpdater() {
+  if (_autoUpdater) return _autoUpdater
+  const { autoUpdater } = await import('electron-updater')
+  autoUpdater.logger = { info: m => console.log('[updater]', m), warn: m => console.warn('[updater]', m), error: m => console.error('[updater]', m) }
+  autoUpdater.on('checking-for-update', () => console.log('[updater] Checking for update...'))
+  autoUpdater.on('update-available', info => console.log('[updater] Update available:', info.version))
+  autoUpdater.on('update-not-available', info => console.log('[updater] Up to date:', info.version))
+  autoUpdater.on('download-progress', p => console.log(`[updater] Downloading: ${Math.round(p.percent)}%`))
+  autoUpdater.on('update-downloaded', () => {
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'Update ready',
+      message: 'A new version of Task OS is ready.',
+      detail: 'It will be installed the next time you restart the app.',
+      buttons: ['Restart now', 'Later'],
+      defaultId: 0,
+    }).then(({ response }) => {
+      if (response === 0) autoUpdater.quitAndInstall()
+    })
+  })
+  autoUpdater.on('error', err => {
+    console.error('[updater] Error:', err.message)
+    dialog.showMessageBox({
+      type: 'error',
+      title: 'Update error',
+      message: 'Could not check for updates.',
+      detail: err.message,
+    })
+  })
+  _autoUpdater = autoUpdater
+  return autoUpdater
+}
+
 function setupAutoUpdater() {
   if (isDev) return
+  getAutoUpdater().then(au => au.checkForUpdates()).catch(err => console.error('[updater] init error:', err.message))
+}
 
-  // Dynamic import so electron-updater is only loaded when needed
-  import('electron-updater').then(({ autoUpdater }) => {
-    autoUpdater.checkForUpdatesAndNotify()
-
-    autoUpdater.on('update-downloaded', () => {
-      dialog.showMessageBox({
-        type: 'info',
-        title: 'Update ready',
-        message: 'A new version of Task OS is ready.',
-        detail: 'It will be installed the next time you restart the app.',
-        buttons: ['Restart now', 'Later'],
-        defaultId: 0,
-      }).then(({ response }) => {
-        if (response === 0) autoUpdater.quitAndInstall()
-      })
-    })
-
-    autoUpdater.on('error', err => console.error('[updater]', err.message))
-  }).catch(() => {})
+async function checkForUpdatesManually() {
+  if (isDev) {
+    dialog.showMessageBox({ type: 'info', title: 'Dev mode', message: 'Auto-updater is disabled in dev mode.' })
+    return
+  }
+  try {
+    const au = await getAutoUpdater()
+    await au.checkForUpdates()
+  } catch (err) {
+    console.error('[updater] manual check error:', err.message)
+  }
 }
 
 // ── Window ────────────────────────────────────────────────────────────────────
@@ -185,6 +214,8 @@ function setupMenu() {
       label: app.name,
       submenu: [
         { role: 'about' },
+        { type: 'separator' },
+        { label: 'Check for Updates…', click: () => checkForUpdatesManually() },
         { type: 'separator' },
         { role: 'services' },
         { type: 'separator' },
