@@ -180,7 +180,7 @@ function createWindow() {
 
 app.whenReady().then(async () => {
   const icon = nativeImage.createFromPath(path.join(__dirname, 'assets/icon.png'))
-  app.dock.setIcon(icon)
+  app.dock?.setIcon(icon)
 
   // In dev, data stays in the project's db/ dir; in production, migrate to userData
   const dbDir = isDev

@@ -49,6 +49,12 @@ dmg:
   title: Task OS
   sign: false
 
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+
 linux:
   category: Utility
   target:
