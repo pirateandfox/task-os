@@ -78,20 +78,11 @@ The MCP tools are the primary interface for Claude to interact with Task OS duri
 
 **Repo:** `github.com/pirateandfox/task-os`
 
-**Branch strategy:**
-- `develop` — all day-to-day work and commits go here
-- `main` — stable releases only; never commit directly
+**Branch strategy:** single `main` branch — commit directly, tag to release.
 
 **Cutting a release:**
 ```bash
-# 1. Merge develop → main
-git checkout main && git merge develop && git push origin main
-
-# 2. Tag the release (triggers GitHub Actions build)
 git tag v1.0.1 && git push origin v1.0.1
-
-# 3. Return to develop
-git checkout develop
 ```
 
 Tagging triggers the GitHub Actions workflow (`.github/workflows/release.yml`) which:
