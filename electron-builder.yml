@@ -49,9 +49,17 @@ dmg:
   title: Task OS
   sign: false
 
+linux:
+  category: Utility
+  target:
+    - target: AppImage
+      arch:
+        - x64
+        - arm64
+
 publish:
   provider: github
-  owner: justinhandley
+  owner: pirateandfox
   repo: task-os
 
 afterSign: scripts/notarize.mjs
