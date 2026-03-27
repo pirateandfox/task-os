@@ -344,8 +344,8 @@ function migrate(db) {
   // Insert internal if missing (slug not in table)
   db.prepare("INSERT OR IGNORE INTO contexts (slug, display_name, label, color, sort_order, active) VALUES ('internal','Internal','Internal','#94a3b8',7,1)").run();
 
-  // Migrate snoozed tasks to active (snooze now just sets due_date, no status change)
-  db.prepare(`UPDATE tasks SET status = 'active', due_date = COALESCE(due_date, strftime('%Y-%m-%d', surface_after)), surface_after = NULL WHERE status = 'snoozed'`).run();
+  // Surface snoozed tasks whose snooze time has passed
+  db.prepare(`UPDATE tasks SET status = 'active', surface_after = NULL WHERE status = 'snoozed' AND (surface_after IS NULL OR surface_after <= strftime('%Y-%m-%d %H:%M', 'now', 'localtime'))`).run();
 
   // Habits
   db.exec(`
