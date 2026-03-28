@@ -44,7 +44,7 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --mac --arch arm64 --publish always
+        run: npx electron-builder --mac --arm64 --publish always
 
   # x64 DMG — built natively on Intel runner to avoid cross-compilation issues
   # with native modules (better-sqlite3, node-pty) that break when cross-compiled
@@ -83,7 +83,7 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --mac --arch x64 --publish always
+        run: npx electron-builder --mac --x64 --publish always
 
   release-windows:
     runs-on: windows-latest
