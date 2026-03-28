@@ -152,12 +152,13 @@ async function startBackends(dbDir) {
     })
   }
 
-  // Wait for API to be ready
+  // Wait for API to be ready (up to 15 seconds — accounts for cold starts on new machines)
   if (!isDev) {
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 75; i++) {
       const ready = await new Promise(resolve => {
         const req = http.request({ hostname: '127.0.0.1', port: API_PORT, path: '/', method: 'GET' }, () => resolve(true))
         req.on('error', () => resolve(false))
+        req.setTimeout(150, () => { req.destroy(); resolve(false) })
         req.end()
       })
       if (ready) break
@@ -252,7 +253,17 @@ function createWindow() {
     win.loadURL(`http://localhost:${DEV_PORT}`)
     win.webContents.openDevTools()
   } else {
-    win.loadURL(`http://localhost:${API_PORT}`)
+    let retries = 0
+    const loadApp = () => win.loadURL(`http://127.0.0.1:${API_PORT}`)
+    win.webContents.on('did-fail-load', (_event, errorCode) => {
+      // -3 is ERR_ABORTED (navigation cancelled), ignore it
+      if (errorCode === -3) return
+      if (retries < 20) {
+        retries++
+        setTimeout(loadApp, 500)
+      }
+    })
+    loadApp()
   }
 }
 

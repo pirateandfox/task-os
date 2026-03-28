@@ -1666,6 +1666,6 @@ wss.on('connection', (ws) => {
 getDb();
 try { autoRunAgents(); } catch (_) {}
 
-server.listen(PORT, '127.0.0.1', () => {
+server.listen(PORT, () => {
   console.log(`Task OS  →  http://localhost:${PORT}`);
 });

@@ -133,7 +133,7 @@ const httpServer = http.createServer(async (req, res) => {
   }
 });
 
-httpServer.listen(PORT, '127.0.0.1', () => {
+httpServer.listen(PORT, () => {
   console.log(`[mcp-http] listening on port ${PORT}`);
 });
 
