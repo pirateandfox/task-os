@@ -23,7 +23,10 @@ export default function CreateTask({ open, defaultDate, onClose, onCreated }: Pr
   const [saving, setSaving] = useState(false)
   const titleRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => { fetchAgents().then(setAgents) }, [])
+  // Only fetch agents when the modal actually opens — not on mount.
+  // Fetching on mount triggers scanAgents() which walks the home directory
+  // on startup, causing macOS TCC to prompt for every protected folder.
+  useEffect(() => { if (open) fetchAgents().then(setAgents) }, [open])
 
   useEffect(() => {
     if (open) {
