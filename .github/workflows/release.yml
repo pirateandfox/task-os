@@ -9,8 +9,12 @@ permissions:
   contents: write
 
 jobs:
-  # arm64 DMG — built natively on Apple Silicon runner
-  release-mac-arm64:
+  # Single macOS job — electron-builder builds both arm64 and x64 on the
+  # arm64 runner. It calls @electron/rebuild internally for each arch, so
+  # cross-compilation of native modules (better-sqlite3, node-pty) is handled
+  # automatically. Running two jobs caused a 422 race condition because both
+  # jobs built all configured arches and tried to upload the same files.
+  release-mac:
     runs-on: macos-latest
 
     steps:
@@ -36,7 +40,7 @@ jobs:
       - name: Build UI
         run: npm run build --prefix ui
 
-      - name: Build and publish Electron app (arm64)
+      - name: Build and publish Electron app (arm64 + x64)
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
@@ -44,51 +48,7 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --mac --arm64 --publish always
-
-  # x64 DMG — cross-compiled on the arm64 runner using Clang's x86_64 target.
-  # macos-13 (the last Intel GitHub runner) was retired, so we cross-compile:
-  # 1. npm ci triggers postinstall which rebuilds native modules for arm64 (host)
-  # 2. electron-rebuild --arch x64 re-compiles better-sqlite3 + node-pty for x64
-  # 3. electron-builder --x64 packages the x64 native modules into the DMG
-  release-mac-x64:
-    runs-on: macos-latest
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install setuptools (for node-gyp / Python 3.12+)
-        run: pip3 install setuptools --break-system-packages
-
-      - name: Install root dependencies
-        run: npm ci
-
-      - name: Install UI dependencies
-        run: npm ci --prefix ui
-
-      - name: Rebuild native modules for x64
-        run: npx electron-rebuild --arch x64 --force
-
-      - name: Build UI
-        run: npm run build --prefix ui
-
-      - name: Build and publish Electron app (x64)
-        env:
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --mac --x64 --publish always
+        run: npx electron-builder --mac --publish always
 
   release-windows:
     runs-on: windows-latest
@@ -150,7 +110,7 @@ jobs:
 
   publish-release:
     runs-on: ubuntu-latest
-    needs: [release-mac-arm64, release-mac-x64, release-windows, release-linux]
+    needs: [release-mac, release-windows, release-linux]
 
     steps:
       - uses: actions/checkout@v4

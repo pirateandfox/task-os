@@ -1,6 +1,6 @@
 {
   "name": "task-os",
-  "version": "1.0.28",
+  "version": "1.0.29",
   "description": "Personal task management system with Claude AI integration",
   "author": "Justin Handley",
   "type": "module",
@@ -30,7 +30,6 @@
   },
   "devDependencies": {
     "@electron/notarize": "^2.5.0",
-    "@electron/rebuild": "^3.7.2",
     "concurrently": "^9.2.1",
     "electron": "^41.0.2",
     "electron-builder": "^25.1.8",
