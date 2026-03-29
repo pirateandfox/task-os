@@ -1426,7 +1426,9 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (pathname === '/create-task-json') {
+      console.log('[api] POST /create-task-json: reading body...');
       const body = await parseJsonBody(req);
+      console.log('[api] POST /create-task-json: body received, title=', body.title);
       if (!body.title) { res.writeHead(400); res.end('{}'); return; }
       const db = getDb();
       const id = crypto.randomUUID();

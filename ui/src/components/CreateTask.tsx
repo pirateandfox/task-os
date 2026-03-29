@@ -44,20 +44,43 @@ export default function CreateTask({ open, defaultDate, onClose, onCreated }: Pr
     e?.preventDefault()
     if (!title.trim() || saving) return
     setSaving(true)
+    console.log('[CreateTask] handleSubmit start, title=', title.trim())
     try {
-      const res = await api.createTask({
+      const payload = {
         title: title.trim(),
         context,
         my_priority: priority ?? undefined,
         due_date: dueDate || undefined,
         project: project.trim() || undefined,
         agent_path: agentPath || undefined,
-      } as any)
+      }
+      console.log('[CreateTask] calling api.createTask, payload=', JSON.stringify(payload))
+      const controller = new AbortController()
+      const timeout = setTimeout(() => {
+        controller.abort()
+        console.error('[CreateTask] fetch timed out after 10s — request never resolved')
+      }, 10000)
+      let res: Response
+      try {
+        res = await fetch(`${(window as any).electronAPI?.apiBase ?? ''}/create-task-json`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        })
+        clearTimeout(timeout)
+        console.log('[CreateTask] fetch resolved, status=', res.status)
+      } catch (fetchErr: any) {
+        clearTimeout(timeout)
+        console.error('[CreateTask] fetch threw:', fetchErr?.name, fetchErr?.message)
+        throw fetchErr
+      }
       const data = await res.json()
-      onCreated(data.id)  // API returns task object with 'id', not 'task_id'
+      console.log('[CreateTask] task created, id=', data.id)
+      onCreated(data.id)
       onClose()
     } catch (err: any) {
-      console.error('[CreateTask] submit failed:', err?.message ?? err)
+      console.error('[CreateTask] submit failed:', err?.name, err?.message ?? err)
       alert(`Failed to create task: ${err?.message ?? 'Unknown error'}`)
     } finally {
       setSaving(false)

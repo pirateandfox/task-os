@@ -212,7 +212,9 @@ export async function applyMcpPort(port: number): Promise<{ ok: boolean; port: n
 }
 
 function post(path: string, body: Record<string, unknown>, json = true) {
-  return fetch(`${API_BASE}${path}`, {
+  const url = `${API_BASE}${path}`
+  console.log('[api] post', url)
+  return fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': json ? 'application/json' : 'application/x-www-form-urlencoded' },
     body: json ? JSON.stringify(body) : new URLSearchParams(body as Record<string, string>).toString(),
