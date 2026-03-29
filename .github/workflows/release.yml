@@ -46,11 +46,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx electron-builder --mac --arm64 --publish always
 
-  # x64 DMG — built natively on Intel runner to avoid cross-compilation issues
-  # with native modules (better-sqlite3, node-pty) that break when cross-compiled
-  # from arm64 to x64.
+  # x64 DMG — cross-compiled on the arm64 runner using Clang's x86_64 target.
+  # macos-13 (the last Intel GitHub runner) was retired, so we cross-compile:
+  # 1. npm ci triggers postinstall which rebuilds native modules for arm64 (host)
+  # 2. electron-rebuild --arch x64 re-compiles better-sqlite3 + node-pty for x64
+  # 3. electron-builder --x64 packages the x64 native modules into the DMG
   release-mac-x64:
-    runs-on: macos-13
+    runs-on: macos-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -71,6 +73,9 @@ jobs:
 
       - name: Install UI dependencies
         run: npm ci --prefix ui
+
+      - name: Rebuild native modules for x64
+        run: npx electron-rebuild --arch x64 --force
 
       - name: Build UI
         run: npm run build --prefix ui
