@@ -392,6 +392,36 @@ function setupMenu() {
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 
+// ── IPC HTTP bridge ───────────────────────────────────────────────────────────
+// Chromium's network stack on some systems (observed on Intel Mac) silently
+// blocks POST requests to localhost even with webSecurity:false. Route all
+// POST calls through IPC so Node's http module makes the request directly,
+// bypassing Chromium's network stack entirely.
+
+ipcMain.handle('http-post', (_event, path, jsonBody, formBody) => {
+  return new Promise((resolve, reject) => {
+    const isJson = jsonBody !== null
+    const data = isJson ? JSON.stringify(jsonBody) : new URLSearchParams(formBody).toString()
+    const req = http.request({
+      hostname: '127.0.0.1',
+      port: API_PORT,
+      path,
+      method: 'POST',
+      headers: {
+        'Content-Type': isJson ? 'application/json' : 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(data),
+      },
+    }, (res) => {
+      let body = ''
+      res.on('data', chunk => { body += chunk })
+      res.on('end', () => resolve({ status: res.statusCode, body }))
+    })
+    req.on('error', err => reject(err))
+    req.write(data)
+    req.end()
+  })
+})
+
 app.whenReady().then(async () => {
   setupLogging()
 

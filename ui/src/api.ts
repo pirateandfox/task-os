@@ -212,9 +212,17 @@ export async function applyMcpPort(port: number): Promise<{ ok: boolean; port: n
 }
 
 function post(path: string, body: Record<string, unknown>, json = true) {
-  const url = `${API_BASE}${path}`
-  console.log('[api] post', url)
-  return fetch(url, {
+  // In Electron, use IPC so Node's http module makes the request from the main
+  // process. Chromium's network stack silently blocks POST to localhost on some
+  // systems (observed on Intel Mac) even with webSecurity:false.
+  const httpPost = (window as any).electronAPI?.httpPost
+  if (httpPost) {
+    return httpPost(path, json ? body : null, json ? null : body)
+      .then((r: { status: number; body: string }) =>
+        new Response(r.body, { status: r.status, headers: { 'Content-Type': 'application/json' } })
+      )
+  }
+  return fetch(`${API_BASE}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': json ? 'application/json' : 'application/x-www-form-urlencoded' },
     body: json ? JSON.stringify(body) : new URLSearchParams(body as Record<string, string>).toString(),
