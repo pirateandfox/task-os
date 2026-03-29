@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { api, fetchAgents, type Agent } from '../api'
+import { fetchAgents, type Agent, API_BASE } from '../api'
 import { PRIORITY_COLORS } from '../lib/constants'
 import { useContexts } from '../lib/ContextsProvider'
 import './CreateTask.css'
@@ -62,7 +62,7 @@ export default function CreateTask({ open, defaultDate, onClose, onCreated }: Pr
       }, 10000)
       let res: Response
       try {
-        res = await fetch(`${(window as any).electronAPI?.apiBase ?? ''}/create-task-json`, {
+        res = await fetch(`${API_BASE}/create-task-json`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
