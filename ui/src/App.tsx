@@ -120,7 +120,7 @@ export default function App() {
       <div className={`layout ${selectedId ? 'panel-open' : ''}`} style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
         <div style={{ flex: 1, overflowY: 'auto', minWidth: 0, paddingBottom: terminalOpen ? 300 : 0 }}>
           {screen === 'habits' ? (
-            <HabitsView onMutate={() => load(date)} />
+            <HabitsView onMutate={() => load(date, true)} />
           ) : screen === 'backlog' ? (
             <BacklogView
               refreshToken={backlogRefresh}
@@ -145,7 +145,7 @@ export default function App() {
                   selectedId={selectedId}
                   onSelect={id => setSelectedId(id)}
                   onMeetingOpen={id => setMeetingId(id)}
-                  onMutate={() => load(date)}
+                  onMutate={() => load(date, true)}
                 />
               )}
             </>
@@ -155,8 +155,8 @@ export default function App() {
         <DetailPanel
           taskId={selectedId}
           onClose={() => setSelectedId(null)}
-          onMutate={() => screen === 'main' ? load(date) : setBacklogRefresh(n => n + 1)}
-          onDelete={() => { setSelectedId(null); screen === 'main' ? load(date) : setBacklogRefresh(n => n + 1) }}
+          onMutate={() => screen === 'main' ? load(date, true) : setBacklogRefresh(n => n + 1)}
+          onDelete={() => { setSelectedId(null); screen === 'main' ? load(date, true) : setBacklogRefresh(n => n + 1) }}
           terminalOpen={terminalOpen}
           onPreview={path => path.endsWith('.md') ? setMdPath(path) : setPreviewPath(path)}
         />

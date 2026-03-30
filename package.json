@@ -1,13 +1,16 @@
 {
   "name": "task-os",
-  "version": "1.0.45",
+  "version": "1.0.46",
   "description": "Personal task management system with Claude AI integration",
   "author": "Justin Handley",
   "type": "module",
   "main": "electron-main.js",
   "scripts": {
     "kill": "pkill -9 -f 'Electron.app/Contents/MacOS/Electron' 2>/dev/null; pkill -9 -f 'electron electron-main.js' 2>/dev/null; pkill -9 -f 'node mcp/http-server.js' 2>/dev/null; true",
-    "electron-dev": "npm run kill && sleep 1 && NODE_ENV=development concurrently --names vite,electron --prefix-colors green,magenta \"npm run dev --prefix ui\" \"./node_modules/.bin/electron electron-main.js\"",
+    "rebuild:electron": "electron-builder install-app-deps",
+    "rebuild:node": "npm rebuild",
+    "mcp": "npm run rebuild:node && node mcp/http-server.js",
+    "electron-dev": "npm run kill && npm run rebuild:electron && sleep 1 && NODE_ENV=development concurrently --names vite,electron --prefix-colors green,magenta \"npm run dev --prefix ui\" \"./node_modules/.bin/electron electron-main.js\"",
     "restart": "npm run kill && sleep 1 && NODE_ENV=development ./node_modules/.bin/electron electron-main.js",
     "build": "npm run build --prefix ui",
     "start": "npm run kill && sleep 1 && NODE_ENV=production ./node_modules/.bin/electron electron-main.js",

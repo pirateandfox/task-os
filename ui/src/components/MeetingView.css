@@ -4,7 +4,7 @@
 .meeting-header {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  padding: 14px 24px;
+  padding: 14px 24px 14px 88px;
   display: flex;
   align-items: center;
   gap: 16px;

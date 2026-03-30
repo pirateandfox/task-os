@@ -46,8 +46,7 @@ export default function MeetingView({ taskId, onBack }: Props) {
 
   async function addAgendaItem() {
     if (!newAgenda.trim()) return
-    const res = await api.createSubtask(taskId, newAgenda.trim())
-    const sub = await res.json() as Task
+    const sub = await api.createSubtask(taskId, newAgenda.trim()) as Task
     setSubtasks(s => [...s, sub])
     setNewAgenda('')
   }
@@ -72,8 +71,7 @@ export default function MeetingView({ taskId, onBack }: Props) {
       ai_context: `Created during meeting: ${event.title}`,
     } as any
     if (newTaskDate) (body as any).due_date = newTaskDate
-    const res = await api.createTask(body)
-    const task = await res.json() as Task
+    const task = await api.createTask(body) as Task
     setCreatedTasks(c => [...c, task.title])
     setNewTask('')
     setNewTaskDate('')

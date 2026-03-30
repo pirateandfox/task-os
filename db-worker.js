@@ -167,6 +167,7 @@ function migrate() {
   const tryAlter = sql => { try { db.exec(sql) } catch {} }
   tryAlter('ALTER TABLE tasks RENAME COLUMN notes TO description')
   tryAlter('ALTER TABLE tasks ADD COLUMN description TEXT')
+  tryAlter('ALTER TABLE tasks ADD COLUMN notes TEXT')
   tryAlter('ALTER TABLE tasks ADD COLUMN sort_order INTEGER')
   tryAlter('ALTER TABLE tasks ADD COLUMN parent_id TEXT REFERENCES tasks(id)')
   tryAlter("ALTER TABLE tasks ADD COLUMN task_type TEXT NOT NULL DEFAULT 'task'")

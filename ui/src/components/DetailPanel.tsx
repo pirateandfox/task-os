@@ -432,6 +432,14 @@ export default function DetailPanel({ taskId, onClose, onMutate, onDelete, termi
                 </span>
               </div>
             )}
+            {latestJob && latestJob.status === 'failed' && (
+              <div className="detail-agent-job detail-agent-job--failed">
+                <span className="detail-job-status detail-job-status--failed">✕ Agent failed</span>
+                {latestJob.result && (
+                  <pre className="detail-agent-error">{latestJob.result}</pre>
+                )}
+              </div>
+            )}
 
             {/* Dates */}
             <div className="detail-field-row">

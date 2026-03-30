@@ -52,7 +52,16 @@ export default function TaskRow({ task, showContext = true, draggable = false, s
       if (!yes) return
       await api.completeWithSubtasks(task.id)
     } else {
-      await api.complete(task.id)
+      const result = await api.complete(task.id)
+      if (result?.ok === false) {
+        if (result.reason === 'subtasks_incomplete') {
+          const yes = window.confirm(`Complete all ${result.count} subtask${result.count > 1 ? 's' : ''} and mark this done?`)
+          if (!yes) return
+          await api.completeWithSubtasks(task.id)
+        } else {
+          return
+        }
+      }
     }
     onMutate()
   }

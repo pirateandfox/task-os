@@ -158,12 +158,18 @@ async function processAgentJobs() {
     const args = job.prevSessionId
       ? [...baseArgs, '--resume', job.prevSessionId, '-p', job.user_message || job.prompt, '--output-format', 'json']
       : [...baseArgs, '-p', job.prompt, '--output-format', 'json']
-    let stdout = '', stderr = '', timedOut = false
-    const proc = spawn(bin, args, { cwd: job.agent_path, stdio: ['ignore', 'pipe', 'pipe'] })
+    let stdout = '', stderr = '', timedOut = false, settled = false
+    const userShell = process.env.SHELL || '/bin/zsh'
+    // Use "$@" pattern so the prompt content is passed as a proper argument
+    // rather than being interpolated into the shell command string (which would
+    // cause newlines in the prompt to be interpreted as separate shell commands).
+    const proc = spawn(userShell, ['-l', '-c', `${bin} "$@"`, '--', ...args], { cwd: job.agent_path, stdio: ['ignore', 'pipe', 'pipe'] })
     proc.stdout.on('data', d => { stdout += d })
     proc.stderr.on('data', d => { stderr += d })
     const timeout = setTimeout(() => { timedOut = true; proc.kill('SIGKILL') }, 15 * 60 * 1000)
     proc.on('close', async code => {
+      if (settled) return
+      settled = true
       clearTimeout(timeout); runningJobs--
       let result = stdout.trim(); let sessionId = null
       try { const p = JSON.parse(stdout); result = p.result ?? result; sessionId = p.session_id ?? null } catch {}
@@ -174,8 +180,10 @@ async function processAgentJobs() {
       if (status === 'done' && job.task_id) await dbCall('insertAgentNote', uuidv4(), job.task_id, result, job.id)
     })
     proc.on('error', async err => {
+      if (settled) return
+      settled = true
       clearTimeout(timeout); runningJobs--
-      await dbCall('finishAgentJob', job.id, 'failed', err.message, null)
+      await dbCall('finishAgentJob', job.id, 'failed', `Failed to start agent: ${err.message}\n\nCommand: ${bin} ${args.slice(0,2).join(' ')} ...\nCheck that the agent command is correct in Settings.`, null)
     })
   }
 }

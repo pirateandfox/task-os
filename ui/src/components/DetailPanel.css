@@ -537,6 +537,17 @@
 .detail-job-status--running { color: #f59e0b; }
 .detail-job-status--done    { color: #22c55e; }
 .detail-job-status--failed  { color: #ef4444; }
+.detail-agent-job--failed { border-color: #ef444440; background: #ef444410; }
+.detail-agent-error {
+  margin-top: 8px;
+  font-family: 'Menlo', 'Monaco', monospace;
+  font-size: 11px;
+  color: #fca5a5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+}
 .detail-job-result {
   margin-top: 6px;
   color: var(--text);
