@@ -394,8 +394,8 @@ app.whenReady().then(async () => {
   setupIpcHandlers((newPort) => restartMcpServer(dbDir, newPort))
   startBackgroundWorkers()
 
-  // MCP server (Claude integration) — still runs as a separate process
-  if (!isDev) await startMcpServer(dbDir)
+  // MCP server (Claude integration) — always start via utilityProcess (dev and prod)
+  await startMcpServer(dbDir)
 
   setupMenu()
   const win = createWindow()

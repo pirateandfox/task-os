@@ -142,6 +142,14 @@ export default function DetailPanel({ taskId, onClose, onMutate, onDelete, termi
   }, [taskId, load])
 
   useEffect(() => {
+    if (!taskId) return
+    const unsub = (window as any).electronAPI?.onAgentJobComplete?.((data: { taskId: string }) => {
+      if (data.taskId === taskId) load(taskId)
+    })
+    return () => unsub?.()
+  }, [taskId, load])
+
+  useEffect(() => {
     if (!task?.id || !latestJob || (latestJob.status !== 'queued' && latestJob.status !== 'running')) return
     const interval = setInterval(() => {
       fetchAgentJobs(task.id).then(jobs => {
@@ -151,6 +159,7 @@ export default function DetailPanel({ taskId, onClose, onMutate, onDelete, termi
         setLatestJob(updated)
         if (wasRunning && nowDone) {
           fetchNotes(task.id).then(setNotes)
+          load(task.id)
           clearInterval(interval)
         }
       })

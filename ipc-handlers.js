@@ -1,6 +1,6 @@
 // ipc-handlers.js — IPC handler registration. All SQLite runs in db-worker.js (Worker thread).
 
-import { ipcMain, shell } from 'electron'
+import { ipcMain, shell, BrowserWindow } from 'electron'
 import { Worker } from 'worker_threads'
 import fs from 'fs'
 import os from 'os'
@@ -178,6 +178,7 @@ async function processAgentJobs() {
       else if (status === 'failed' && stderr.trim()) result += `\n\nStderr:\n${stderr.trim()}`
       await dbCall('finishAgentJob', job.id, status, result, sessionId)
       if (status === 'done' && job.task_id) await dbCall('insertAgentNote', uuidv4(), job.task_id, result, job.id)
+      BrowserWindow.getAllWindows()[0]?.webContents.send('agent-job:complete', { taskId: job.task_id, jobId: job.id })
     })
     proc.on('error', async err => {
       if (settled) return
@@ -326,7 +327,9 @@ export function setupIpcHandlers(onMcpPortChange) {
     let claudeJson = {}
     try { claudeJson = JSON.parse(fs.readFileSync(CLAUDE_JSON_PATH, 'utf8')) } catch {}
     const entry = claudeJson.mcpServers?.['task-os']
-    const isHttpConfigured = entry?.type === 'http' && entry?.url === `http://localhost:${port}/mcp`
+    const url = `http://localhost:${port}/mcp`
+    const isHttpConfigured = (entry?.type === 'http' && entry?.url === url) ||
+      (entry?.type === 'stdio' && entry?.args?.includes(url))
     return { port, isHttpConfigured, currentEntry: entry ?? null }
   })
   ipcMain.handle('mcp:apply', (_, port) => {
@@ -336,7 +339,9 @@ export function setupIpcHandlers(onMcpPortChange) {
     let claudeJson = {}
     try { claudeJson = JSON.parse(fs.readFileSync(CLAUDE_JSON_PATH, 'utf8')) } catch {}
     if (!claudeJson.mcpServers) claudeJson.mcpServers = {}
-    claudeJson.mcpServers['task-os'] = { type: 'http', url: `http://localhost:${p}/mcp` }
+    // Use mcp-remote stdio proxy so task-os works in both interactive and non-interactive
+    // (agent subprocess) Claude Code sessions. Direct HTTP type is skipped in -p mode.
+    claudeJson.mcpServers['task-os'] = { type: 'stdio', command: 'npx', args: ['-y', 'mcp-remote', `http://localhost:${p}/mcp`] }
     fs.writeFileSync(CLAUDE_JSON_PATH, JSON.stringify(claudeJson, null, 2))
     if (onMcpPortChange) onMcpPortChange(p)
     return { ok: true, port: p, url: `http://localhost:${p}/mcp` }

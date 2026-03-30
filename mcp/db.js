@@ -176,9 +176,10 @@ export function nextRecurrenceDate(baseDate, recurrence) {
   if (!recurrence) return null;
   try {
     const rruleStr = toRruleString(recurrence);
-    const dtstart = new Date(baseDate + 'T12:00:00Z');
+    // Anchor to midnight UTC on the day after baseDate — purely date-based, no current time involved.
+    const dtstart = new Date(new Date(baseDate + 'T00:00:00Z').getTime() + 86400000);
     const rule = rrulestr('RRULE:' + rruleStr, { dtstart });
-    const next = rule.after(dtstart, false); // strictly after baseDate
+    const next = rule.after(dtstart, true); // inclusive: first occurrence on or after dtstart
     return next ? next.toISOString().slice(0, 10) : null;
   } catch (_) {
     return null;

@@ -27,8 +27,11 @@ function nextRecurrenceDate(fromDate, rule) {
   if (!rule) return null
   const SHORTHANDS = { daily: 'FREQ=DAILY', weekdays: 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', weekly: 'FREQ=WEEKLY', monthly: 'FREQ=MONTHLY' }
   try {
-    const r = rrulestr(`RRULE:${SHORTHANDS[rule] || rule}`)
-    const next = r.after(new Date(fromDate + 'T12:00:00Z'), false)
+    // Anchor to midnight UTC on the day after fromDate — purely date-based, no current time involved.
+    // This means completing at 1AM or 11PM gives the same next-day result.
+    const dtstart = new Date(offsetDate(fromDate, 1) + 'T00:00:00Z')
+    const r = rrulestr(`RRULE:${SHORTHANDS[rule] || rule}`, { dtstart })
+    const next = r.after(dtstart, true) // inclusive: first occurrence on or after dtstart
     return next ? next.toISOString().slice(0, 10) : null
   } catch { return null }
 }
@@ -488,7 +491,11 @@ function createAgentJob(taskId, userMessage) {
   const task = taskId ? db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId) : null
   if (!task || !task.agent_path) throw new Error('task_id required and task must have agent_path')
   const existingNotes = db.prepare(`SELECT * FROM notes WHERE task_id = ? ORDER BY created_at ASC`).all(taskId)
-  const parts = [`Task: ${task.title}`]
+  const parts = [
+    `You are an agent running inside Task OS. Task ID: ${taskId}`,
+    `If you create any output files, save them to ${task.agent_path}/output/ and include their paths in your response so Task OS can link them back to this task.`,
+    `Task: ${task.title}`
+  ]
   if (task.description) parts.push(task.description)
   if (existingNotes.length > 0) {
     parts.push('\n--- Conversation ---')
@@ -524,7 +531,8 @@ function getAutorunTasks() {
   return db.prepare(`SELECT t.* FROM tasks t WHERE t.agent_path IS NOT NULL AND t.agent_autorun = 1 AND t.status = 'active' AND (t.due_date IS NULL OR t.due_date <= date('now')) AND time('now', 'localtime') >= COALESCE(t.agent_autorun_time, '09:00') AND NOT EXISTS (SELECT 1 FROM agent_jobs j WHERE j.task_id = t.id)`).all()
 }
 function insertAutorunJob(taskId, agentPath, prompt) {
-  db.prepare(`INSERT INTO agent_jobs (id, task_id, agent_path, prompt) VALUES (?, ?, ?, ?)`).run(crypto.randomUUID(), taskId, agentPath, prompt)
+  const fullPrompt = `You are an agent running inside Task OS. Task ID: ${taskId}\nIf you create any output files, save them to ${agentPath}/output/ and include their paths in your response so Task OS can link them back to this task.\n${prompt}`
+  db.prepare(`INSERT INTO agent_jobs (id, task_id, agent_path, prompt) VALUES (?, ?, ?, ?)`).run(crypto.randomUUID(), taskId, agentPath, fullPrompt)
   return { ok: true }
 }
 
