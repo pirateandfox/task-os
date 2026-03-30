@@ -349,8 +349,7 @@ function setupMenu() {
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 
 // ── Terminal IPC ──────────────────────────────────────────────────────────────
-// Replaces the WebSocket terminal in api.js. Spawns node-pty in the main
-// process and streams output to the renderer via webContents.send.
+// Spawns node-pty in the main process and streams output to the renderer via webContents.send.
 
 function setupTerminalIpc(win) {
   ipcMain.handle('terminal:start', async (_, cols, rows) => {
@@ -385,7 +384,7 @@ app.whenReady().then(async () => {
     ? path.join(__dirname, 'db')
     : await ensureUserData()
 
-  // Initialise IPC handlers (replaces api.js HTTP server)
+  // Initialise IPC handlers
   await initDbWorker(dbDir)
   initSettings(dbDir)
   setupIpcHandlers((newPort) => restartMcpServer(dbDir, newPort))

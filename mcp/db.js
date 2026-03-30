@@ -108,16 +108,9 @@ function initSchema(db) {
   // Seed default contexts on first run
   const { c } = db.prepare('SELECT count(*) as c FROM contexts').get();
   if (c === 0) {
-    const ins = db.prepare(
+    db.prepare(
       'INSERT OR IGNORE INTO contexts (slug, display_name, source, notes) VALUES (?, ?, ?, ?)'
-    );
-    ins.run('personal',     'Personal',         null,     'Personal tasks and habits');
-    ins.run('silvermouse',  'Silvermouse',       null,     'Silvermouse band projects');
-    ins.run('pirateandfox', 'Pirate & Fox',     'linear', 'Pirate & Fox projects (Muzebook, MVP Accelerator, NestledJS, Stack, Sentiosonics)');
-    ins.run('flightdesk',   'FlightDesk',       'linear', 'FlightDesk product — Justin\'s dev task tracker');
-    ins.run('monroe',       'Monroe Institute', 'asana',  'Monroe Institute client work');
-    ins.run('biztobiz',     'Biz to Biz',       'notion', 'Biz to Biz client work');
-    ins.run('silvermouse',  'Silvermouse',       null,     'Silvermouse band projects — All of Us release and other music');
+    ).run('personal', 'Personal', null, 'Personal tasks and habits');
   }
 }
 
