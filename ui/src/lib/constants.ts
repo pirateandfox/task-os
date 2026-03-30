@@ -1,22 +1,6 @@
-export const CONTEXT_COLORS: Record<string, string> = {
-  monroe:       '#4f9cf9',
-  biztobiz:     '#f9a94f',
-  pirateandfox: '#a78bfa',
-  flightdesk:   '#f472b6',
-  silvermouse:  '#fb7185',
-  personal:     '#4fcc8a',
-  internal:     '#f472b6',
-}
+export const CONTEXT_COLORS: Record<string, string> = {}
 
-export const CONTEXT_LABELS: Record<string, string> = {
-  monroe:       'Monroe Institute',
-  biztobiz:     'Biz to Biz',
-  pirateandfox: 'Pirate & Fox',
-  flightdesk:   'FlightDesk',
-  silvermouse:  'Silvermouse',
-  personal:     'Personal',
-  internal:     'Internal',
-}
+export const CONTEXT_LABELS: Record<string, string> = {}
 
 export const PRIORITY_COLORS: Record<number, string> = {
   1: '#ef4444',

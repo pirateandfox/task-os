@@ -169,6 +169,7 @@ export default function Settings({ open, onClose }: Props) {
                     style={{ width: 28, height: 28, border: 'none', background: 'none', cursor: 'pointer', padding: 0 }} />
                   <input className="settings-input" style={{ width: 180, flex: 'unset' }} value={editLabel}
                     onChange={e => setEditLabel(e.target.value)} />
+                  <span style={{ fontSize: 11, color: '#4a5568', fontFamily: 'monospace' }}>{c.slug}</span>
                   <button className="settings-save" style={{ padding: '4px 10px', fontSize: 12 }}
                     onClick={async () => {
                       await updateContext(c.slug, { label: editLabel, color: editColor })

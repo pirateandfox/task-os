@@ -62,7 +62,7 @@ function initSchema(db) {
 
     CREATE TABLE IF NOT EXISTS contexts (
       slug          TEXT PRIMARY KEY,
-      display_name  TEXT NOT NULL,
+      display_name  TEXT,
       source        TEXT,
       source_config TEXT,
       notes         TEXT,

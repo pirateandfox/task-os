@@ -17,4 +17,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('terminal:output', handler)
     return () => ipcRenderer.removeListener('terminal:output', handler)
   },
+  onTerminalExit: (callback) => {
+    const handler = (_event, code) => callback(code)
+    ipcRenderer.on('terminal:exit', handler)
+    return () => ipcRenderer.removeListener('terminal:exit', handler)
+  },
 })

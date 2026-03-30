@@ -184,24 +184,10 @@ function migrate() {
   tryAlter('ALTER TABLE contexts ADD COLUMN label TEXT')
   tryAlter("ALTER TABLE contexts ADD COLUMN color TEXT NOT NULL DEFAULT '#888888'")
   tryAlter('ALTER TABLE contexts ADD COLUMN sort_order INTEGER')
-  tryAlter("INSERT OR IGNORE INTO contexts (slug, display_name, label, color, sort_order, active) VALUES ('internal','Internal','Internal','#94a3b8',7,1)")
-
-  const known = [
-    { slug: 'monroe',       color: '#4f9cf9', sort_order: 1, label: 'Monroe Institute' },
-    { slug: 'biztobiz',     color: '#f9a94f', sort_order: 2, label: 'Biz to Biz' },
-    { slug: 'pirateandfox', color: '#a78bfa', sort_order: 3, label: 'Pirate & Fox' },
-    { slug: 'silvermouse',  color: '#fb7185', sort_order: 4, label: 'Silvermouse' },
-    { slug: 'flightdesk',   color: '#f472b6', sort_order: 5, label: 'FlightDesk' },
-    { slug: 'personal',     color: '#4fcc8a', sort_order: 6, label: 'Personal' },
-    { slug: 'internal',     color: '#94a3b8', sort_order: 7, label: 'Internal' },
-  ]
-  const updateCtx = db.prepare("UPDATE contexts SET color = ?, sort_order = ?, label = CASE WHEN label IS NULL OR label = '' THEN ? ELSE label END WHERE slug = ?")
-  for (const c of known) updateCtx.run(c.color, c.sort_order, c.label, c.slug)
-  const { n } = db.prepare('SELECT COUNT(*) as n FROM contexts').get()
-  if (n === 0) {
-    const ins = db.prepare('INSERT OR IGNORE INTO contexts (slug, label, color, sort_order) VALUES (@slug, @label, @color, @sort_order)')
-    for (const c of known) ins.run(c)
-  }
+  // Backfill label from display_name for rows created before label column existed
+  tryAlter("UPDATE contexts SET label = display_name WHERE label IS NULL AND display_name IS NOT NULL")
+  // Always ensure the default context exists
+  db.prepare('INSERT OR IGNORE INTO contexts (slug, display_name, label, color, sort_order) VALUES (?, ?, ?, ?, ?)').run('personal', 'Personal', 'Personal', '#4fcc8a', 1)
   db.prepare(`UPDATE tasks SET status = 'active', surface_after = NULL WHERE status = 'snoozed' AND (surface_after IS NULL OR surface_after <= strftime('%Y-%m-%d %H:%M', 'now', 'localtime'))`).run()
 }
 
@@ -420,12 +406,13 @@ function listContexts() { return db.prepare('SELECT * FROM contexts ORDER BY sor
 function createContext(slug, label, color) {
   if (!slug || !label) throw new Error('slug and label required')
   const maxOrder = db.prepare('SELECT MAX(sort_order) as m FROM contexts').get().m ?? 0
-  db.prepare('INSERT INTO contexts (slug, label, color, sort_order) VALUES (?, ?, ?, ?)').run(slug.trim().toLowerCase(), label.trim(), color ?? '#888888', maxOrder + 1)
+  const trimmedLabel = label.trim()
+  db.prepare('INSERT INTO contexts (slug, display_name, label, color, sort_order) VALUES (?, ?, ?, ?, ?)').run(slug.trim().toLowerCase(), trimmedLabel, trimmedLabel, color ?? '#888888', maxOrder + 1)
   return { slug }
 }
 function updateContext(slug, fields) {
   const sets = []; const params = []
-  if (fields.label !== undefined) { sets.push('label = ?'); params.push(fields.label) }
+  if (fields.label !== undefined) { sets.push('label = ?'); params.push(fields.label); sets.push('display_name = ?'); params.push(fields.label) }
   if (fields.color !== undefined) { sets.push('color = ?'); params.push(fields.color) }
   if (fields.sort_order !== undefined) { sets.push('sort_order = ?'); params.push(fields.sort_order) }
   if (!sets.length) throw new Error('nothing to update')

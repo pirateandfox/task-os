@@ -365,7 +365,11 @@ function setupTerminalIpc(win) {
     console.log(`[terminal] spawning pty: shell=${shell} cwd=${cwd}`)
     ptyProcess = pty.spawn(shell, [], { name: 'xterm-256color', cols: cols || 80, rows: rows || 24, cwd, env: process.env })
     ptyProcess.onData(data => { if (!win.isDestroyed()) win.webContents.send('terminal:output', data) })
-    ptyProcess.onExit(({ exitCode }) => { console.log(`[terminal] pty exited code=${exitCode}`); ptyProcess = null })
+    ptyProcess.onExit(({ exitCode }) => {
+      console.log(`[terminal] pty exited code=${exitCode}`)
+      ptyProcess = null
+      if (!win.isDestroyed()) win.webContents.send('terminal:exit', exitCode)
+    })
     console.log(`[terminal] pty spawned pid=${ptyProcess.pid}`)
     return { ok: true }
   })

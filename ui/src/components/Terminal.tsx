@@ -19,19 +19,27 @@ export default function Terminal({ open, onClose, pendingCommand, onCommandConsu
   const termRef = useRef<XTerm | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
   const readyRef = useRef(false)
-  const initializedRef = useRef(false)
-  const cleanupRef = useRef<(() => void) | null>(null)
+  const xtermInitRef = useRef(false)
+  const outputCleanupRef = useRef<(() => void) | null>(null)
+  const exitCleanupRef = useRef<(() => void) | null>(null)
 
   const connect = useCallback(async () => {
-    const { cols, rows } = fitRef.current
-      ? { cols: termRef.current?.cols ?? 80, rows: termRef.current?.rows ?? 24 }
-      : { cols: 80, rows: 24 }
+    // Clean up previous output listener if any
+    outputCleanupRef.current?.()
+    exitCleanupRef.current?.()
+    readyRef.current = false
 
-    // Listen for output from main process
-    const removeListener = eAPI().onTerminalOutput((data: string) => {
+    const cols = termRef.current?.cols ?? 80
+    const rows = termRef.current?.rows ?? 24
+
+    outputCleanupRef.current = eAPI().onTerminalOutput((data: string) => {
       termRef.current?.write(data)
     })
-    cleanupRef.current = removeListener
+
+    exitCleanupRef.current = eAPI().onTerminalExit(() => {
+      readyRef.current = false
+      termRef.current?.write('\r\n\x1b[33mProcess exited. Reopen terminal to start a new session.\x1b[0m\r\n')
+    })
 
     try {
       await eAPI().terminalStart(cols, rows)
@@ -41,7 +49,6 @@ export default function Terminal({ open, onClose, pendingCommand, onCommandConsu
       return
     }
 
-    // Auto-run command if configured
     try {
       const settings = await fetchSettings()
       const autoRun = settings.terminalAutoRun?.trim()
@@ -51,9 +58,10 @@ export default function Terminal({ open, onClose, pendingCommand, onCommandConsu
     } catch {}
   }, [])
 
+  // Initialize xterm DOM once
   useEffect(() => {
-    if (!open || initializedRef.current || !containerRef.current) return
-    initializedRef.current = true
+    if (xtermInitRef.current || !containerRef.current) return
+    xtermInitRef.current = true
 
     const term = new XTerm({
       theme: {
@@ -77,13 +85,18 @@ export default function Terminal({ open, onClose, pendingCommand, onCommandConsu
     term.onData(data => { eAPI().terminalInput(data) })
     term.onResize(({ cols, rows }) => { eAPI().terminalResize(cols, rows) })
 
-    connect()
-
     const resizeObserver = new ResizeObserver(() => fit.fit())
     resizeObserver.observe(containerRef.current)
+    return () => { resizeObserver.disconnect() }
+  }, [])
+
+  // Connect/reconnect pty whenever terminal opens
+  useEffect(() => {
+    if (!open || !xtermInitRef.current) return
+    connect()
     return () => {
-      resizeObserver.disconnect()
-      cleanupRef.current?.()
+      outputCleanupRef.current?.()
+      exitCleanupRef.current?.()
     }
   }, [open, connect])
 
