@@ -471,9 +471,10 @@ export const handlers = {
     const existing = db.prepare('SELECT slug FROM contexts WHERE slug = ?').get(slug);
     if (existing) throw new Error(`Context '${slug}' already exists.`);
     const maxOrder = db.prepare('SELECT MAX(sort_order) as m FROM contexts').get().m ?? 0;
-    db.prepare('INSERT INTO contexts (slug, label, color, sort_order) VALUES (?, ?, ?, ?)')
-      .run(slug, args.label.trim(), args.color ?? '#888888', maxOrder + 1);
-    return { slug, label: args.label.trim(), color: args.color ?? '#888888' };
+    const label = args.label.trim();
+    db.prepare('INSERT INTO contexts (slug, display_name, label, color, sort_order) VALUES (?, ?, ?, ?, ?)')
+      .run(slug, label, label, args.color ?? '#888888', maxOrder + 1);
+    return { slug, label, color: args.color ?? '#888888' };
   },
 
   archive_task(args) {

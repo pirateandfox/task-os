@@ -15,6 +15,7 @@ function initSchema(db) {
     CREATE TABLE IF NOT EXISTS tasks (
       id                  TEXT PRIMARY KEY,
       title               TEXT NOT NULL,
+      description         TEXT,
       notes               TEXT,
       status              TEXT NOT NULL DEFAULT 'active',
       my_priority         INTEGER,
@@ -38,8 +39,15 @@ function initSchema(db) {
       task_type           TEXT NOT NULL DEFAULT 'task',
       event_time          TEXT,
       end_time            TEXT,
+      links               TEXT DEFAULT '[]',
+      sort_order          INTEGER,
       parent_id           TEXT REFERENCES tasks(id),
-      recurrence          TEXT
+      recurrence          TEXT,
+      outcome             TEXT,
+      agent_path          TEXT,
+      agent_resume        INTEGER NOT NULL DEFAULT 1,
+      agent_autorun       INTEGER NOT NULL DEFAULT 0,
+      agent_autorun_time  TEXT DEFAULT '09:00'
     );
 
     CREATE TABLE IF NOT EXISTS sync_log (
@@ -69,6 +77,40 @@ function initSchema(db) {
       active        INTEGER NOT NULL DEFAULT 1
     );
 
+    CREATE TABLE IF NOT EXISTS agent_jobs (
+      id           TEXT PRIMARY KEY,
+      task_id      TEXT REFERENCES tasks(id),
+      agent_path   TEXT NOT NULL,
+      prompt       TEXT NOT NULL,
+      user_message TEXT,
+      status       TEXT NOT NULL DEFAULT 'queued',
+      result       TEXT,
+      session_id   TEXT,
+      created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+      started_at   TEXT,
+      completed_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS habits (
+      id          TEXT PRIMARY KEY,
+      title       TEXT NOT NULL,
+      description TEXT,
+      recurrence  TEXT NOT NULL DEFAULT 'daily',
+      active      INTEGER NOT NULL DEFAULT 1,
+      created_at  TEXT NOT NULL,
+      updated_at  TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS habit_logs (
+      id         TEXT PRIMARY KEY,
+      habit_id   TEXT NOT NULL REFERENCES habits(id),
+      date       TEXT NOT NULL,
+      status     TEXT NOT NULL DEFAULT 'done',
+      notes      TEXT,
+      created_at TEXT NOT NULL,
+      UNIQUE(habit_id, date)
+    );
+
     CREATE TABLE IF NOT EXISTS attachments (
       id           TEXT PRIMARY KEY,
       task_id      TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -91,18 +133,31 @@ function initSchema(db) {
   `);
 
   // Migrations — add columns that may not exist in older DBs
+  const tryAlter = sql => { try { db.exec(sql); } catch (_) {} };
+  // Handle notes→description rename (db-worker migration) for older MCP-only DBs
+  tryAlter('ALTER TABLE tasks RENAME COLUMN notes TO description');
   const existingCols = db.prepare(`PRAGMA table_info(tasks)`).all().map(r => r.name);
-  if (!existingCols.includes('recurrence')) {
-    db.exec(`ALTER TABLE tasks ADD COLUMN recurrence TEXT`);
+  if (!existingCols.includes('recurrence'))         db.exec('ALTER TABLE tasks ADD COLUMN recurrence TEXT');
+  if (!existingCols.includes('outcome'))            db.exec('ALTER TABLE tasks ADD COLUMN outcome TEXT');
+  if (!existingCols.includes('end_time'))           db.exec('ALTER TABLE tasks ADD COLUMN end_time TEXT');
+  if (!existingCols.includes('agent_path'))         db.exec('ALTER TABLE tasks ADD COLUMN agent_path TEXT');
+  if (!existingCols.includes('links'))              db.exec("ALTER TABLE tasks ADD COLUMN links TEXT DEFAULT '[]'");
+  if (!existingCols.includes('sort_order'))         db.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER');
+  if (!existingCols.includes('agent_resume'))       db.exec('ALTER TABLE tasks ADD COLUMN agent_resume INTEGER NOT NULL DEFAULT 1');
+  if (!existingCols.includes('agent_autorun'))      db.exec('ALTER TABLE tasks ADD COLUMN agent_autorun INTEGER NOT NULL DEFAULT 0');
+  if (!existingCols.includes('agent_autorun_time')) db.exec("ALTER TABLE tasks ADD COLUMN agent_autorun_time TEXT DEFAULT '09:00'");
+  if (!existingCols.includes('description'))        db.exec('ALTER TABLE tasks ADD COLUMN description TEXT');
+
+  // Migrations for contexts table columns added after initial schema
+  const contextCols = db.prepare(`PRAGMA table_info(contexts)`).all().map(r => r.name);
+  if (!contextCols.includes('label')) {
+    db.exec(`ALTER TABLE contexts ADD COLUMN label TEXT`);
   }
-  if (!existingCols.includes('outcome')) {
-    db.exec(`ALTER TABLE tasks ADD COLUMN outcome TEXT`);
+  if (!contextCols.includes('color')) {
+    db.exec(`ALTER TABLE contexts ADD COLUMN color TEXT NOT NULL DEFAULT '#888888'`);
   }
-  if (!existingCols.includes('end_time')) {
-    db.exec(`ALTER TABLE tasks ADD COLUMN end_time TEXT`);
-  }
-  if (!existingCols.includes('agent_path')) {
-    db.exec(`ALTER TABLE tasks ADD COLUMN agent_path TEXT`);
+  if (!contextCols.includes('sort_order')) {
+    db.exec(`ALTER TABLE contexts ADD COLUMN sort_order INTEGER`);
   }
 
   // Seed default contexts on first run
