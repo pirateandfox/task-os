@@ -65,6 +65,18 @@ export default function Settings({ open, onClose }: Props) {
           <span className="settings-hint">Takes effect on next terminal open</span>
         </div>
         <div className="settings-row">
+          <label className="settings-label">Agents scan root</label>
+          <input
+            className="settings-input"
+            type="text"
+            value={settings.agentsRoot ?? ''}
+            onChange={e => set('agentsRoot', e.target.value)}
+            placeholder={`Defaults to terminal working directory`}
+            spellCheck={false}
+          />
+          <span className="settings-hint">Folder scanned recursively for agent.config files. Set wider than terminal CWD to find agents in sister repos.</span>
+        </div>
+        <div className="settings-row">
           <label className="settings-label">Terminal auto-run command</label>
           <input
             className="settings-input"

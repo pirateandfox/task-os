@@ -310,7 +310,7 @@ export function setupIpcHandlers(onMcpPortChange) {
   // Agents
   ipcMain.handle('agents:list', () => {
     const settings = loadSettings()
-    return scanAgents(settings.terminalCwd || process.env.HOME)
+    return scanAgents(settings.agentsRoot || settings.terminalCwd || process.env.HOME)
   })
   ipcMain.handle('agent-jobs:list', (_, taskId) => dbCall('listAgentJobs', taskId))
   ipcMain.handle('agent-jobs:get', (_, id) => dbCall('getAgentJob', id))
