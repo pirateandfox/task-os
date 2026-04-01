@@ -417,20 +417,27 @@ export default function DetailPanel({ taskId, onClose, onMutate, onDelete, termi
             {task.agent_path && (
               <div className="detail-field-row">
                 <span className="detail-field-label">Auto-run</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={!!task.agent_autorun}
-                      onChange={e => patch({ agent_autorun: e.target.checked ? 1 : 0 })}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={!!task.agent_autorun}
+                        onChange={e => patch({ agent_autorun: e.target.checked ? 1 : 0 })}
+                      />
+                      {task.recurrence ? 'Run automatically on each recurrence at' : 'When due, run at'}
+                    </label>
+                    <TimePicker
+                      value={task.agent_autorun_time ?? '09:00'}
+                      disabled={!task.agent_autorun}
+                      onChange={v => patch({ agent_autorun_time: v })}
                     />
-                    When due, run at
-                  </label>
-                  <TimePicker
-                    value={task.agent_autorun_time ?? '09:00'}
-                    disabled={!task.agent_autorun}
-                    onChange={v => patch({ agent_autorun_time: v })}
-                  />
+                  </div>
+                  {task.agent_autorun && task.recurrence && (
+                    <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                      Each new occurrence will be worked on automatically — it'll be ready when you check in.
+                    </span>
+                  )}
                 </div>
               </div>
             )}
