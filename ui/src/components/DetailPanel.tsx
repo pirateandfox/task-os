@@ -425,7 +425,7 @@ export default function DetailPanel({ taskId, onClose, onMutate, onDelete, termi
                         checked={!!task.agent_autorun}
                         onChange={e => patch({ agent_autorun: e.target.checked ? 1 : 0 })}
                       />
-                      When due, run at
+                      Run automatically when due at
                     </label>
                     <TimePicker
                       value={task.agent_autorun_time ?? '09:00'}
@@ -433,11 +433,6 @@ export default function DetailPanel({ taskId, onClose, onMutate, onDelete, termi
                       onChange={v => patch({ agent_autorun_time: v })}
                     />
                   </div>
-                  {!!task.agent_autorun && !!task.recurrence && (
-                    <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-                      Carries over to each new occurrence — the agent will run automatically when this task recurs.
-                    </span>
-                  )}
                 </div>
               </div>
             )}

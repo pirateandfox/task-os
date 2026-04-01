@@ -3,10 +3,16 @@ import { openDb, nowIso, today, appendAiContext, nextRecurrenceDate } from '../d
 
 function spawnNextOccurrence(db, task, now) {
   if (!task.recurrence) return null;
-  // Use the task's own due_date as the base so completing a past-due task
-  // spawns for the correct next date, not the day after today.
-  const baseDate = task.due_date ?? today();
-  const nextDate = nextRecurrenceDate(baseDate, task.recurrence);
+  // Advance from the task's due_date to today-or-future in one shot,
+  // so completing a long-overdue task spawns for today (or next future occurrence),
+  // not for a date that's already in the past.
+  const t = today();
+  let baseDate = task.due_date ?? t;
+  let nextDate = nextRecurrenceDate(baseDate, task.recurrence);
+  while (nextDate && nextDate < t) {
+    baseDate = nextDate;
+    nextDate = nextRecurrenceDate(baseDate, task.recurrence);
+  }
   if (!nextDate) return null;
   const next_task_id = uuidv4();
   db.prepare(`

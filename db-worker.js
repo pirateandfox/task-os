@@ -222,7 +222,14 @@ function autoRolloverRecurring() {
   const now = nowIso()
   for (const task of stale) {
     db.prepare(`UPDATE tasks SET status = 'done', outcome = 'skipped', last_touched_human = ?, ai_context = ? WHERE id = ?`).run(now, appendAiContext(task.ai_context, 'Auto-skipped: overdue recurring task.'), task.id)
-    const nextDate = nextRecurrenceDate(task.due_date ?? t, task.recurrence)
+    // Advance all the way to today-or-future in one shot to prevent cascade duplication
+    // when autoRolloverRecurring runs multiple times (e.g. repeated UI refreshes).
+    let baseDate = task.due_date ?? t
+    let nextDate = nextRecurrenceDate(baseDate, task.recurrence)
+    while (nextDate && nextDate < t) {
+      baseDate = nextDate
+      nextDate = nextRecurrenceDate(baseDate, task.recurrence)
+    }
     if (nextDate) spawnRecurrence(task, nextDate, now, `Auto-recurred from task ${task.id}`)
   }
 }
