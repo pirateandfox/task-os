@@ -1,23 +1,89 @@
 # Task OS
 
-A personal task management system built for people who work with Claude. Tasks live in a local SQLite database. Claude connects via MCP and can create, update, triage, and act on tasks directly. An Electron app provides the UI.
+**Your task manager, operated by Claude.**
 
-![Task OS](assets/icon.png)
+Task OS is a local-first task management system built around a single idea: Claude shouldn't just *talk* about your tasks — it should *run* them. Via MCP, Claude has full read/write access to your task database in every conversation. It creates tasks, triages your backlog, runs your morning briefing, and dispatches autonomous agents to actually complete work.
+
+Your data lives in a local SQLite database on your machine. Nothing goes to a server. The app is free and open source.
+
+---
+
+## The idea
+
+Most people use Claude like a smart search engine. You copy-paste context in, ask a question, copy the answer out. Task OS is built on a different premise: **Claude should be a participant in your work, not a consultant you have to brief every time.**
+
+When Claude has persistent access to your tasks — everything you need to do, when it's due, how urgent it is, what project it belongs to — the nature of the interaction changes. You stop re-explaining yourself. Claude stops giving generic advice. You start having conversations that move work forward.
+
+In practice that looks like:
+
+- **Morning:** *"What's my day look like?"* → Claude reads your overdue tasks, today's schedule, and upcoming deadlines, then tells you what to focus on and what to push.
+- **During work:** *"I need to follow up with Sarah about the contract, remind me Thursday"* → task created, snoozed, done. No switching apps.
+- **End of day:** *"Triage me"* → Claude reviews what got done, moves stale items to backlog, proposes priorities for tomorrow.
+- **Agents:** Assign a Claude Code agent to a task. Task OS dispatches it, captures the output, and marks the task complete. You come back to work already done.
+
+---
+
+## What you get
+
+**A local Electron app** with four views:
+
+| View | What it shows |
+|---|---|
+| **Priority** | Today's tasks, grouped by context, drag to reorder |
+| **Project** | Same tasks grouped by project |
+| **Backlog** | Snoozed, unsurfaced, and future tasks |
+| **Habits** | Daily habit tracker with streak display |
+
+**30+ MCP tools** that Claude can call in any conversation:
+
+```
+morning_briefing      → full briefing with priorities + overdue tasks
+get_todays_tasks      → today's active tasks
+create_task           → create a task with full metadata
+update_task           → update any field
+complete_task         → mark done (auto-spawns next occurrence for recurring tasks)
+snooze_task           → snooze until a date
+search_tasks          → full-text search
+queue_agent_job       → dispatch a Claude Code agent to work on a task
+list_habits           → all habits with today's completion status
+log_habit             → mark a habit done or skipped
+end_of_day_triage     → review and plan tomorrow
+stale_backlog_review  → surface tasks that haven't been touched recently
+... and more
+```
+
+**A built-in terminal** with docked and fullscreen modes — run Claude Code alongside your task view without switching windows.
+
+**Agents** — any folder with an `agent.config` file becomes a dispatchable agent. Assign one to a task, queue a job, and Task OS runs it with the task description as the prompt. Agents can write output files that preview directly in the app.
+
+**Habits** — recurring behaviors with flexible scheduling. Daily, weekdays, specific days of the week (Mon/Wed/Fri, Tue/Thu). Streak dots, session notes, completion history.
+
+**Recurrence** — full RRULE support plus shorthands. Completing a recurring task auto-spawns the next occurrence.
+
+**Contexts** — organize tasks by area of life or work. Each context has a color. Claude uses contexts when triaging and creating tasks.
+
+**Attachments** — connect any S3-compatible bucket (Cloudflare R2 recommended) for file storage.
+
+**Theming** — light, dark, or system. Full color token customization.
 
 ---
 
 ## Install
 
-Download the latest release for your platform from the [Releases page](https://github.com/pirateandfox/task-os/releases/latest):
+Download the latest release from the [Releases page](https://github.com/pirateandfox/task-os/releases/latest):
 
-- **Mac** — `.dmg` (arm64 for Apple Silicon, x64 for Intel)
-- **Windows** — `.exe` installer (unsigned — Windows will show a SmartScreen warning, click "More info" → "Run anyway")
-  - Claude Code on Windows: use `npm install -g @anthropic-ai/claude-code` if the native installer fails (required on CPUs without AVX support)
-- **Linux** — `.AppImage` (make executable with `chmod +x`, then run)
+| Platform | File |
+|---|---|
+| **Mac (Apple Silicon)** | `.dmg` (arm64) |
+| **Mac (Intel)** | `.dmg` (x64) |
+| **Windows** | `.exe` installer |
+| **Linux** | `.AppImage` |
+
+> **Windows note:** The installer is unsigned — Windows SmartScreen will warn you. Click "More info" → "Run anyway". If Claude Code fails on Windows, install it via npm: `npm install -g @anthropic-ai/claude-code`
 
 ---
 
-## Run from Source
+## Run from source
 
 Requires Node.js 20+.
 
@@ -31,9 +97,9 @@ npm run electron-dev
 
 ---
 
-## Connect Claude Code
+## Connect Claude
 
-Task OS runs an MCP server on `http://localhost:3457`. Add it to your `~/.claude.json`:
+Task OS runs an MCP server on `http://localhost:3457`. Add it to `~/.claude.json`:
 
 ```json
 {
@@ -46,293 +112,88 @@ Task OS runs an MCP server on `http://localhost:3457`. Add it to your `~/.claude
 }
 ```
 
-Restart Claude Code after adding it. The Task OS app must be running for the MCP tools to be available.
+Restart Claude Code. The app must be running for the tools to be available.
 
-You can also change the port and auto-update `~/.claude.json` from Settings → MCP Server inside the app.
-
----
-
-## Views
-
-The app has four main views, selectable from the top-right toggle:
-
-| View | Description |
-|---|---|
-| **Priority** | All of today's tasks grouped by context, sorted by `sort_order` (drag to reorder) |
-| **Project** | Same tasks grouped by project instead |
-| **Backlog** | All snoozed, unsurfaced, and future tasks |
-| **Habits** | Daily habit tracker |
-
-Use the date navigator in the top bar to view tasks for other days.
-
----
-
-## Task Fields
-
-| Field | Description |
-|---|---|
-| **Title** | The task description |
-| **Status** | `active`, `snoozed`, `done`, `archived` |
-| **Context** | Which area of your life/work this belongs to (e.g. `personal`, `monroe`, `silvermouse`) |
-| **Project** | Optional grouping within a context |
-| **Due Date** | When the task is due — overdue tasks appear in red |
-| **Priority** | `p1`–`p4` for ordering within a section |
-| **Energy** | `high`, `medium`, `low` — helps pick tasks for your current state |
-| **Type** | `task`, `event`, `reminder` — events are permanent dated records |
-| **Recurrence** | RRULE string (e.g. `FREQ=WEEKLY;BYDAY=MO`) or shorthand (`daily`, `weekdays`, `weekly`, `monthly`) |
-| **Notes** | Free-text thread; supports multi-message history with user/agent attribution |
-
----
-
-## Contexts
-
-Contexts represent different areas of your life or work. Each task belongs to one context. Contexts have a display label and a color dot.
-
-Manage contexts in **Settings → Contexts**: add, edit label/color, or delete. Default contexts: `personal`, `monroe`, `biztobiz`, `pirateandfox`, `silvermouse`, `flightdesk`, `internal`.
-
-Claude uses contexts to organize tasks when triaging: `list_contexts` to see all, `create_task` with a `context` field to assign one.
-
----
-
-## Daily Note
-
-The daily note is a per-day scratchpad (monospace text). Open it with the **✎** button in the header or by pressing the button. Claude can also read and append to it via `get_daily_note` and `update_daily_note`.
-
----
-
-## Habits
-
-The Habits view tracks repeating behaviors. Each habit has a title, optional description, and a recurrence rule. You can mark habits done or skipped, add notes per log entry, and see a streak dot display.
-
-Claude can log habits via `log_habit` and read history via `get_habit_history`.
-
----
-
-## Keyboard Shortcuts
-
-| Key | Action |
-|---|---|
-| `N` | New task (when not in an input) |
-| `R` | Refresh task list |
-| `Ctrl + \`` | Toggle terminal |
-| `Escape` | Close detail panel / modal |
-
----
-
-## Settings
-
-Open Settings from the **⚙** gear icon in the header.
-
-### Appearance
-
-Choose between **System** (follows your OS dark/light preference), **Light**, or **Dark** mode. The header also has a ◑/☀/☾ button that cycles through modes.
-
-**Color Tokens** — customize any of the 9 theme tokens with a color picker:
-
-| Token | Controls |
-|---|---|
-| Background | Main window background |
-| Surface | Cards, header bar |
-| Surface Alt | Inputs, secondary fills |
-| Border | All dividers and outlines |
-| Text | Primary text |
-| Muted Text | Labels, metadata, placeholders |
-| Accent | Interactive elements, selected states, links |
-| Panel Background | Sliding panels (terminal, settings, daily note) |
-| Input Background | Text inputs |
-
-Use **Reset to Dark** / **Reset to Light** to apply a preset, or **Reset to Preset** to discard custom overrides and return to the active preset. Theme is stored in the browser's `localStorage` — persists across restarts.
-
-### Terminal Working Directory
-
-Sets the working directory when the built-in terminal opens. Also the root for agent scanning (see below).
-
-```
-/Users/you/IdeaProjects        # Mac/Linux
-C:\Users\you\IdeaProjects      # Windows
-```
-
-### Agents Scan Root
-
-If you want Task OS to find agents (`agent.config` files) in a wider directory than your terminal CWD — for example, across multiple sibling repos — set this separately. Defaults to terminal working directory.
-
-### Terminal Auto-Run Command
-
-A command that runs automatically every time the terminal opens. Useful for activating an environment or launching a persistent session (e.g. `dangerclaude`).
-
-### Default Agent Command
-
-The CLI command used to invoke agents from the task queue. Defaults to `claude --dangerously-skip-permissions`. Per-agent `agent.config` overrides this.
-
-### Attachments & Storage
-
-Task OS can store task attachments in any S3-compatible bucket (Cloudflare R2 recommended):
-
-- **S3 Endpoint URL** — e.g. `https://<account_id>.r2.cloudflarestorage.com`
-- **Bucket Name** — e.g. `task-os-attachments`
-- **Access Key ID / Secret Access Key** — R2 API token credentials
-- **Public Base URL** — optional CDN prefix; if blank, presigned URLs are used
-- **Local Attachment Cache** — all files are also cached here on disk
-
-Use **Test Connection** to verify credentials, and **Sync Pending** to upload any locally-cached attachments that haven't been synced yet.
-
-### Contexts
-
-Add, edit, or remove contexts. Each context has a slug (e.g. `personal`), a display label, and a color.
-
-### MCP Server
-
-Default port is `3457`. Click **Apply** to save the new port and auto-update `~/.claude.json`. Restart Claude Code after applying.
+You can also change the port and auto-update `~/.claude.json` from **Settings → MCP Server** inside the app.
 
 ---
 
 ## Agents
 
-An agent is a folder with an `agent.config` file. Task OS scans your agents scan root recursively for these folders and lists discovered agents in Settings.
-
-### agent.config format
+An agent is a folder with an `agent.config` file:
 
 ```json
 {
-  "name": "My Agent",
-  "description": "What this agent does",
+  "name": "Research Agent",
+  "description": "Researches a topic and produces a markdown report",
   "command": "claude --dangerously-skip-permissions"
 }
 ```
 
-- `name` — display name (defaults to folder name)
-- `description` — shown in Settings
-- `command` — how to invoke the agent (overrides Default Agent Command)
+Task OS scans your configured agents root and lists discovered agents in Settings. Assign an agent to a task from the detail panel. When you queue a job, Task OS spawns the agent in that folder with the task description as the prompt. Results appear as a note on the task.
 
-### Assigning an agent to a task
+Agents can attach output files to tasks via the `update_task` MCP tool:
 
-In the task detail panel, set the **Agent** field to point to the agent's folder. Queue an agent job from the detail panel — Task OS runs the agent in that folder with the task description as the prompt. Job status (queued / running / done / failed) is shown on the task row.
+```
+update_task(task_id: "...", links: [{ url: "/absolute/path/to/report.md" }])
+```
+
+Linked `.md` files open in a markdown editor with PDF export. Linked `.html` and `.eml` files open in an email preview.
 
 ---
 
-## File Previews (Markdown & Email)
+## Task fields
 
-Task OS can preview `.md` files and `.eml`/HTML email files directly in the app. Agents can attach output files to a task so they appear as clickable preview buttons in the task detail panel.
-
-### How agents should attach files
-
-After writing a file, the agent should call `update_task` with a `links` array:
-
-```
-update_task(
-  task_id: "abc123",
-  links: [
-    { url: "/absolute/path/to/output/document.md" },
-    { url: "/absolute/path/to/output/email-draft.html" }
-  ]
-)
-```
-
-The file path must be absolute. Task OS reads it directly from disk when you click the preview button.
-
-### What to tell your agents
-
-Include this in your agent's system prompt or CLAUDE.md:
-
-```
-After writing any output files (markdown documents, email drafts, etc.),
-attach them to the task using update_task with a links array containing
-the absolute file path as the url. Example:
-
-update_task(task_id: "...", links: [{ url: "/absolute/path/to/file.md" }])
-
-This makes the file available for preview in Task OS.
-```
-
-### Supported file types
-
-| Extension | Preview |
+| Field | Description |
 |---|---|
-| `.md` | Markdown editor with PDF export |
-| `.html`, `.eml` | Email/HTML preview with zoom |
+| **Title** | What needs doing |
+| **Status** | `active`, `snoozed`, `done`, `archived` |
+| **Context** | Area of life/work (`personal`, `work`, `project-x`) |
+| **Project** | Optional grouping within a context |
+| **Due date** | Overdue tasks appear in red |
+| **Priority** | `p1`–`p4` for ordering within a section |
+| **Energy** | `high`, `medium`, `low` — useful for matching tasks to your current state |
+| **Type** | `task`, `event`, `reminder` |
+| **Recurrence** | RRULE string or shorthand (`daily`, `weekdays`, `weekly`, `monthly`) |
+| **Agent** | Path to an agent folder — enables job dispatch from the detail panel |
+| **Notes** | Thread of notes with user/AI attribution |
 
 ---
 
-## MCP Tools Reference
+## Keyboard shortcuts
 
-Key tools available to Claude:
-
-| Tool | Description |
+| Key | Action |
 |---|---|
-| `morning_briefing` | Full morning briefing with priorities and overdue tasks |
-| `afternoon_briefing` | Mid-day check-in summary |
-| `get_todays_tasks` | Today's active tasks |
-| `get_overdue_tasks` | All overdue tasks |
-| `get_waking_tasks` | Tasks surfacing from snooze today |
-| `create_task` | Create a new task |
-| `update_task` | Update any field including links, status, context, agent |
-| `complete_task` | Mark a task done |
-| `skip_task` | Skip a recurring task occurrence |
-| `snooze_task` | Snooze until a date |
-| `move_to_backlog` | Move to backlog without a surface date |
-| `search_tasks` | Full-text search |
-| `get_task` | Get a single task by ID |
-| `get_daily_note` | Read today's daily note |
-| `update_daily_note` | Append to today's daily note |
-| `get_week_notes` | Read this week's daily notes |
-| `list_contexts` | List all registered contexts |
-| `create_context` | Register a new context |
-| `queue_agent_job` | Queue an agent job for a task |
-| `list_habits` | List all habits |
-| `log_habit` | Log a habit as done or skipped |
-| `get_habit_history` | Read habit completion history |
-| `end_of_day_triage` | End-of-day review and next-day planning |
-| `stale_backlog_review` | Review backlog tasks that haven't been touched recently |
+| `N` | New task |
+| `R` | Refresh |
+| `` Ctrl+` `` | Toggle terminal |
+| `Escape` | Close panel |
+
+---
+
+## Tech stack
+
+- **Electron** + **Vite** + **React** + **TypeScript**
+- **SQLite** via `better-sqlite3` (local, no server required)
+- **MCP** via `@modelcontextprotocol/sdk` (StreamableHTTP, port 3457)
+- **xterm.js** for the terminal
+- **S3-compatible** storage for attachments (optional)
 
 ---
 
 ## Contributing
 
-### Branch protection
-
-The `main` branch is protected — direct pushes are blocked for contributors. All changes must go through a pull request and require **1 approval** before merging.
-
-### Workflow
-
 ```bash
-# 1. Branch off main
-git checkout -b feature/my-feature   # or fix/, chore/
-
-# 2. Make changes, commit
-git add <files>
-git commit -m "feat: describe what you did"
-
-# 3. Push and open a PR against main
+git checkout -b feature/my-feature
+# make changes
+git commit -m "feat: what you did"
 git push -u origin feature/my-feature
 gh pr create --base main
 ```
 
-Use conventional commit prefixes: `feat:`, `fix:`, `chore:`, `refactor:`, `docs:`.
+Releases are cut by pushing a version tag: `git tag v1.0.x && git push origin v1.0.x`. This triggers the GitHub Actions build — macOS DMG (signed + notarized), Windows EXE, Linux AppImage — and publishes to GitHub Releases. The app auto-updates.
 
-### What happens on merge
-
-Merging to `main` does **not** trigger a release. Releases are cut by the maintainer by pushing a version tag:
-
-```bash
-# Maintainer only — bump version in package.json first
-git tag v1.0.x && git push origin v1.0.x
-```
-
-This triggers the GitHub Actions build (macOS DMG + Windows EXE + Linux AppImage), signs/notarizes, and publishes to GitHub Releases.
-
-### Architecture
-
-See [`CLAUDE.md`](CLAUDE.md) for the full architecture overview, file layout, database schema, and development notes.
-
----
-
-## Tech Stack
-
-- **Electron** 41 + **Vite** + **React** + **TypeScript**
-- **SQLite** via `better-sqlite3`
-- **MCP** via `@modelcontextprotocol/sdk` (StreamableHTTP transport)
-- **S3-compatible** attachment storage (Cloudflare R2 recommended)
-- **xterm.js** for the built-in terminal
+See [`CLAUDE.md`](CLAUDE.md) for architecture, schema, and development notes.
 
 ---
 
