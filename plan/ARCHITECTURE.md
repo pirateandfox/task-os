@@ -2,247 +2,178 @@
 
 ## Current State
 
-The existing `~/task-os/` is a working prototype: SQLite database, MCP server, Node.js scripts. It proved the concept and works well as a personal tool. It is not distribution-ready. This document captures the architecture for **Task OS v2** — a clean rebuild designed for open source distribution, with sync and multi-platform support built in from day one.
+The existing Task OS is a working, battle-tested personal tool: SQLite database, MCP server, Electron app. It has been in daily use for over a year and the schema is proven. This document captures the architecture for **Task OS v2** — adding sync, mobile, and multi-device support without throwing away what works.
 
-The current implementation serves as the product requirements reference. Every tool, field, and behavior already built is the spec.
+**Core principle: evolve, don't rewrite.**
 
 ---
 
 ## Core Philosophy
 
-**Local-first.** The app is fast because it runs against a local database. That speed is a feature, not an accident. The goal is to preserve it while enabling optional sync and collaboration.
+**Local-first on desktop, cloud-backed on mobile.**
 
-- Personal tasks: fully local, never leave the device
-- Collaborative projects: selectively synced with specific people
-- No central authority required
-- Your data lives on your device
+- Desktop app is fast because it reads/writes local SQLite directly — that stays
+- MCP server hits local SQLite — that stays, zero latency for Claude sessions
+- Mobile hits the API — always online, simpler
+- Sync is a background concern, not the core architecture
 
 ---
 
 ## Architecture Overview
 
-### Data Layer
+```
+┌─────────────────────┐         ┌──────────────────────┐
+│   Desktop (Electron) │         │   Mobile (Expo)       │
+│                     │         │                      │
+│  SQLite (primary)   │◄──sync──►│  NestleJS API        │
+│  MCP server         │         │  (read/write)         │
+│  Local SQLite R/W   │         │                      │
+└─────────────────────┘         └──────────────────────┘
+                                          │
+                                ┌─────────▼──────────┐
+                                │  NestleJS Backend   │
+                                │  Postgres (primary) │
+                                │  REST API           │
+                                └────────────────────┘
+```
 
-**Automerge** as the primary store (not SQLite + sync bolted on).
+### Desktop
 
-- CRDT documents handle conflict resolution natively — concurrent edits from multiple devices reconcile automatically
-- Best-in-class conflict resolution, mature JavaScript bindings
-- Local persistence via Automerge's built-in storage adapters
-- Each "project" is an Automerge document; personal tasks are a local-only document
+- Reads and writes **local SQLite** — same as today, no change
+- MCP server talks to local SQLite — stays fast, stays offline-capable
+- Background sync worker pushes local changes to the API and pulls remote changes
+- Works fully offline — sync catches up when connectivity returns
 
-The MCP server reads/writes Automerge documents directly. SQLite is not part of v2.
+### Backend (NestleJS + Postgres)
 
-### Sync Layer
+- Canonical remote store
+- REST API consumed by mobile and the sync worker
+- Postgres mirrors the SQLite schema — same fields, same structure
+- Simple timestamp-based sync: `updated_at` on every row, last-write-wins
+- Hosted by Justin; self-hostable (open source)
 
-**Automerge sync server** — a persistent relay that stores CRDT document state.
+### Mobile (Expo / React Native)
 
-- Not a traditional database — stores encrypted CRDT blobs
-- Solves the offline problem: when a device comes back online, it syncs from the server's stored state. Both devices do not need to be online simultaneously.
-- Data is end-to-end encrypted — the relay cannot read user content
-- Stateless from the user's perspective: if the relay goes down, your data is still on your device
-
-The relay server is built with **NestleJS** (Justin's own framework) backed by **Postgres** for encrypted blob storage.
-
-### Identity & Auth
-
-**No username/password accounts.** Identity is keypair-based — the desktop is the root of trust.
-
-#### Personal mode (one person, multiple devices)
-
-Pairing flow:
-1. Desktop generates a keypair on first launch, stores it in the OS keychain
-2. To add a device: desktop displays a QR code / one-time pairing code
-3. New device scans it, receives the shared encryption key
-4. Both devices sync via the relay — the relay authenticates by key, not by account
-
-Device recovery scenarios:
-
-| Scenario | Solution |
-|---|---|
-| Add new device | Pair from any existing device (QR/code) |
-| Lost phone | Revoke from desktop → relay rejects old key → pair new phone |
-| Lost desktop | Pair new desktop, approve from phone |
-| Lost everything | Recovery phrase → regenerate root keypair |
-
-**Recovery phrase:** a BIP39-style 24-word mnemonic generated at setup. Written down once, stored safely. If all devices are lost, the phrase regenerates the root keypair and re-accesses encrypted relay data. This is the only credential that needs to exist.
-
-The relay never sees plaintext data. If a device is stolen, it has encrypted blobs it cannot read and a key the relay will reject once revoked.
-
-#### Team mode (shared agent hub, company use)
-
-A different product mode where a company runs a Task OS instance and multiple people connect to dispatch agents and share task pools. This mode benefits from traditional accounts + admin-managed access control. Designed for later — personal mode ships first.
+- Reads and writes through the NestleJS API directly
+- No local database on mobile — always-online is acceptable for phone usage
+- If offline: queue writes locally, flush when connection returns (simple queue, not CRDT)
 
 ---
 
-## Monorepo Structure
+## Sync Strategy
 
-Single repo (`taskos/`) managed with **pnpm workspaces + Turborepo**.
+**Last-write-wins on `updated_at`.** Simple, correct for the actual use case.
+
+Real conflict rate for a single user across a desktop and phone is near zero — you're not editing the same task on two devices simultaneously in practice. The complexity of CRDT conflict resolution is not justified by the actual conflict scenarios that occur.
+
+Sync flow (desktop → server):
+1. Desktop writes to local SQLite (instant, as today)
+2. Sync worker checks for rows where `updated_at > last_synced_at`
+3. Pushes changed rows to the API
+4. API writes to Postgres, returns server timestamp
+5. Desktop records `last_synced_at`
+
+Sync flow (server → desktop):
+1. Sync worker polls for changes since `last_synced_at`
+2. Pulls changed rows
+3. Writes to local SQLite if server `updated_at` > local `updated_at`
+
+Sync runs on a short interval (e.g. 30s) and on every local write.
+
+---
+
+## Data Model
+
+The existing SQLite schema carries forward unchanged into Postgres. No migration of the data model — only a migration of the data itself (a one-time export/import script when v2 launches).
+
+Key tables: `tasks`, `habits`, `habit_logs`, `contexts`, `daily_notes`, `attachments`
+
+Task ordering (`sort_order INTEGER`) stays as-is. Last-write-wins handles concurrent reorders acceptably — the conflict rate is low enough that the simple solution is correct.
+
+---
+
+## Platform Targets
 
 ```
 taskos/
   packages/
-    core/          ← Automerge documents, data model, CRDT sync logic, keypair/crypto
-                     Shared by desktop, mobile, and sync-server
-    mcp/           ← MCP server (Claude integration) — desktop only
-    desktop/       ← Electron app (React/TypeScript)
-    mobile/        ← Expo (React Native) app — iOS + Android
-    sync-server/   ← NestleJS relay server (open source)
-    billing/       ← NestleJS billing service, Stripe integration (private/closed source)
+    desktop/       ← Electron app (current codebase, evolved)
+    mobile/        ← Expo (React Native) — iOS + Android
+    backend/       ← NestleJS + Postgres API + sync endpoint
+    billing/       ← Stripe integration (private repo)
 ```
 
-**Open source policy:**
-- `core`, `mcp`, `desktop`, `mobile`, `sync-server` — all MIT licensed, fully open
-- `billing` — private repo, not open source (Stripe glue, no reason to expose)
-- Self-hosters get everything they need to run their own full stack from the open source packages
-- Hosted relay + billing is the commercial offering
+**Monorepo:** pnpm workspaces. Shared TypeScript types between desktop, mobile, and backend via a lightweight `types/` package.
 
-## Platform Targets
+**Desktop** stays Electron. No rewrite. MCP server stays as a utilityProcess. The sync worker is a new background process added alongside the existing ones.
 
-**Desktop** is the primary environment — full MCP integration, Claude talks to the local Automerge store directly. Fast, local, AI-native. Desktop app stays **Electron**:
+**Mobile** is Expo (React Native). Hits the NestleJS API. Standard React Native patterns — no CRDT, no local database complexity.
 
-- Already built and working — no rewrite cost
-- Auto-updater via electron-updater already in place
-- MCP server runs as a utilityProcess alongside the app (current architecture)
-- Frontend stays React/TypeScript
-
-**Mobile** is **Expo (React Native)** — iOS + Android:
-
-- Installed on device — encryption key never leaves the device
-- Same trust model as desktop: relay sees only encrypted blobs
-- React Native Web rejected: JS served from a web server at runtime, which would require trusting the server not to exfiltrate keys — breaks the E2E encryption guarantee
-- No web app for task data for the same reason
-- Expo chosen for: managed build pipeline (EAS Build), OTA updates, strong ecosystem, avoids native toolchain complexity for most features
-
-**Web** is limited to unauthenticated surfaces: marketing site, public/shared task views (if a user opts to share). Not a home for private task data.
-
-**Note on SQLite:** SQLite does not go away in v2 — it drops down a layer. Automerge uses it internally as its local persistence mechanism via a storage adapter. Your application code never writes SQL directly; you interact only with the Automerge API. Same file format, completely different relationship to your code.
+**No web app** for task data. A web app would require trusting the server with decryption keys or abandoning E2E encryption — neither is acceptable. Marketing site only.
 
 ---
 
 ## File Attachments
 
-Sync links, not files. The CRDT document stores a reference (file key + metadata). The file itself lives in object storage.
-
-**Default recommendation: Cloudflare R2**
-- S3-compatible API
-- Zero egress fees (unlike AWS S3 at ~$0.09/GB)
-- 10GB free tier — most users never pay anything
-
-**Implementation: one S3-compatible integration covers everything.**
-The AWS S3 SDK supports a configurable endpoint URL. Users bring S3, R2, Backblaze B2, Wasabi, MinIO, or DigitalOcean Spaces — the app doesn't change.
-
-```
-Settings → Storage
-  Endpoint:    [https://your-account.r2.cloudflarestorage.com]
-  Bucket:      [my-taskos-files]
-  Access Key:  [...]
-  Secret Key:  [...]
-```
-
-Files upload directly from the client to the user's bucket via presigned URLs. The sync server never touches file content.
+Unchanged from current implementation. S3-compatible object storage (Cloudflare R2 recommended). Files upload directly from client to the user's bucket via presigned URLs. The backend stores metadata only.
 
 ---
 
-## Hosting & Business Model
+## Identity & Auth
 
-### Sync Relay
+**Email + password for the API.** Standard auth — JWT tokens, refresh tokens. No keypair complexity.
 
-Justin hosts a sync relay. Users can connect to it with one button or configure their own.
+On desktop: credentials stored in the OS keychain. Sync worker authenticates with a long-lived token. User logs in once, stays logged in.
+
+On mobile: standard login screen, token stored in secure storage.
+
+**Privacy position:** Justin's hosted backend stores task data. Standard data custody — privacy policy, no data selling, Postgres with backups. This is the same trust model as Todoist, Things, Linear. It is good enough and honest about what it is.
+
+---
+
+## Billing
+
+- Stripe for payments
+- Stripe Customer Portal for subscription management (no custom billing UI needed)
+- Subscription status checked by the backend on API requests
+- Free tier: local only, no sync
+- Paid tier: sync enabled
 
 ```
-Settings → Sync
-  ● Task OS Relay (hosted)   [Connect]
-  ○ Self-hosted              [Enter URL: ____________]
-  ○ Off (local only)
+Free:    Local only
+$5/mo:   Sync across devices + BYOS file attachments
+$10/mo:  Sync + hosted file storage (R2 under the hood)
 ```
-
-**Cost structure:**
-- Relay stores encrypted CRDT state for task data (text fields, dates, status) — tiny per user, negligible storage cost
-- A small VPS (~$6-10/month, Hetzner/Fly.io/Railway) handles thousands of users
-- Margins are excellent
-
-**Pricing:**
-```
-Free:     Local only, no sync
-$5/mo:    Sync relay (tasks) + BYOS for file attachments
-$10/mo:   Sync relay + hosted file storage (Xgb included, R2 under the hood)
-```
-
-### Billing & Auth
-
-Billing identity and data identity are fully decoupled — the relay never knows who you are, only whether your token is valid.
-
-**Billing layer (NestleJS, Postgres):**
-- Minimal accounts table: `(email, stripe_customer_id, subscription_status)`
-- Stripe handles payment, invoicing, and the customer-facing subscription portal
-- On active subscription: the billing API issues a signed relay token tied to the user's public key
-- Token format: `{ pubkey, valid_until, sig }` — signed with the relay's private key
-
-**Relay layer:**
-- Validates token signature and expiry on connection
-- Never looks up email or user account
-- Rejects connections with expired or missing tokens
-- Accepts self-hosters with no token (they own their relay)
-
-**Flow:**
-```
-1. User subscribes via Stripe Customer Portal (email + card)
-2. Billing API issues relay token: { pubkey: "abc...", valid_until: "2027-01-01", sig: "..." }
-3. Token stored locally on device
-4. Device connects to relay → presents token → relay validates → sync allowed
-5. Subscription cancelled → token expires → relay rejects → local data unaffected
-```
-
-**Device management:**
-- New device paired via QR/code → relay token travels with keypair or re-issued from billing portal
-- Lost device revoked from desktop or billing portal → relay rejects that public key
-- Billing portal (web, email login) is the only place email is used — purely for subscription management
-
-### File Storage (hosted tier)
-
-If offering hosted storage: use Cloudflare R2 on the backend (zero egress fees). Start with BYOS-only — it sidesteps GDPR/data retention complexity. Add hosted storage as an upsell once operationally ready.
-
-### GDPR & Privacy
-
-Because the relay stores only encrypted blobs it cannot read, data custody obligations are minimal. Users own their data cryptographically — even if the relay is subpoenaed, the data is unreadable without the user's key. Billing data (email, payment history) is standard Stripe-managed PII — well-understood obligations, nothing unusual. This is a strong legal and ethical position.
 
 ---
 
 ## Open Source Strategy
 
-- App is open source (MIT or Apache 2)
-- Self-hosters run their own sync relay (documented, simple to deploy with NestleJS + Postgres)
-- Hosted relay is the commercial offering — sell convenience, not the software
-- Self-hosters are free marketing to technical users who refer paying friends
-
-This is the Obsidian model: free local app, paid sync.
-
----
-
-## Why Automerge (not hand-rolled sync)
-
-This was a deliberate decision worth documenting. The simpler alternative — SQLite on desktop syncing to a Postgres backend via a `sync_log` table, last-write-wins — was considered and rejected for the following reasons:
-
-- **Conflict handling is harder than it looks.** Complete task on phone + snooze on desktop simultaneously. Recurring task fires on both devices while offline. Subtask added on mobile while desktop reorders the parent list. Last-write-wins silently destroys one of those intentions. Automerge resolves all of these correctly by design.
-- **The sync_log approach scales badly.** Every new column, every new table, every new operation requires updating the sync logic. It becomes a parallel system maintained forever alongside the real schema.
-- **Offline is not a luxury.** Mobile apps get backgrounded, connections drop at the worst moments. A sync system needs to handle every combination of online/offline states across every device correctly. That's exactly what CRDTs are built for.
-- **Building it once correctly.** Hand-rolled sync ships faster but gets rewritten in two years when edge cases accumulate. Automerge is that rewrite done upfront.
-- **Cost for personal use is negligible.** A single-user relay storing encrypted CRDT blobs costs essentially nothing — a small Fly.io instance handles it comfortably.
-
-The primary user is also the most demanding user: running agents, complex recurrence, heavy Claude integration, editing tasks across desktop and phone constantly. Building for that use case correctly from day one is the right call.
-
-## Open Questions
-
-- **Compaction strategy** — how often to squash Automerge history to keep storage flat
-- **Buffer window** — how long the hosted relay retains state for offline devices
-- **Team mode auth** — account model for shared/company instances (personal mode ships first)
+- `desktop`, `mobile`, `backend` packages: MIT licensed, fully open source
+- Self-hosters can run the full stack — backend + their own Postgres
+- `billing` package: private (Stripe keys, payment logic)
+- Hosted backend is the commercial offering — sell convenience, not software
 
 ---
 
 ## What Carries Forward from v1
 
-- All MCP tool names and behaviors (current tools are the product spec)
-- Task schema: context, source_url, due_date, surface_after, recurrence (RRULE)
-- Recurring task logic (spawn next on complete/skip)
-- Morning briefing, end-of-day, stale backlog review workflows
-- The concept of Task OS as Claude's task interface — that stays central
+Everything. The entire existing codebase is v2 desktop. No rewrite:
+
+- SQLite schema and all migrations
+- MCP server and all tools
+- All task behaviors: recurrence, surface_after, contexts, projects
+- Agent spawning and autorun
+- Habits system
+- Morning briefing, triage, briefing workflows
+- Electron app, UI components, IPC handlers
+
+V2 adds: sync worker, NestleJS backend, Expo mobile app.
+
+---
+
+## Open Questions
+
+- **Sync conflict UI** — what does the app show when a rare conflict is detected and resolved?
+- **Selective sync** — do all contexts sync, or can you mark a context as local-only?
+- **Team/shared contexts** — future; not in scope for v2
