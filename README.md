@@ -1,8 +1,8 @@
 # Task OS
 
-**Your task manager, operated by Claude.**
+**Project management for the AI era.**
 
-Task OS is a local-first task management system built around a single idea: Claude shouldn't just *talk* about your tasks — it should *run* them. Via MCP, Claude has full read/write access to your task database in every conversation. It creates tasks, triages your backlog, runs your morning briefing, and dispatches autonomous agents to actually complete work.
+Task OS gives Claude full read/write access to your tasks, daily notes, and habit log — all in one local app. Not just a task manager Claude can read. A system Claude actively operates: creating tasks, triaging your backlog, running your morning briefing, dispatching autonomous agents to complete work, and building a persistent memory of your days that makes weekly reviews and long-term planning actually useful.
 
 Your data lives in a local SQLite database on your machine. Nothing goes to a server. The app is free and open source.
 
@@ -14,16 +14,21 @@ Your data lives in a local SQLite database on your machine. Nothing goes to a se
 
 ## The idea
 
-Most people use Claude like a smart search engine. You copy-paste context in, ask a question, copy the answer out. Task OS is built on a different premise: **Claude should be a participant in your work, not a consultant you have to brief every time.**
+The AI project management space has split into two camps. One camp uses markdown files — tasks as text, everything in a folder, Claude reads the files. Simple, but no structure, no recurrence, no real query capability. The other camp keeps using traditional task managers and just asks Claude questions about them — but Claude has no write access, no persistence, no memory across sessions.
 
-When Claude has persistent access to your tasks — everything you need to do, when it's due, how urgent it is, what project it belongs to — the nature of the interaction changes. You stop re-explaining yourself. Claude stops giving generic advice. You start having conversations that move work forward.
+Task OS is a third approach: **a structured task database that Claude lives inside of.**
+
+Claude has full read/write access to your tasks, your daily notes, and your habit log simultaneously. That combination is what makes it different. Your tasks capture what you need to do. Your daily notes capture everything else — the meeting that went sideways, the idea you had at 2pm, the thing you wanted to remember but didn't have time to turn into a task. Together, they give Claude a real memory of your work across days and weeks.
 
 In practice that looks like:
 
-- **Morning:** *"What's my day look like?"* → Claude reads your overdue tasks, today's schedule, and upcoming deadlines, then tells you what to focus on and what to push.
+- **Morning:** *"What's my day look like?"* → Claude reads your overdue tasks, today's schedule, upcoming deadlines, and yesterday's notes, then tells you what to focus on and what to push.
 - **During work:** *"I need to follow up with Sarah about the contract, remind me Thursday"* → task created, snoozed, done. No switching apps.
 - **End of day:** *"Triage me"* → Claude reviews what got done, moves stale items to backlog, proposes priorities for tomorrow.
+- **Weekly review:** *"How was my week?"* → Claude reads all seven daily notes plus task completion history and gives you a real account of what happened — including the small things that never became tasks but mattered.
 - **Agents:** Assign a Claude Code agent to a task. Task OS dispatches it, captures the output, and marks the task complete. You come back to work already done.
+
+The terminal is built in so you never leave the context. Claude runs in a panel below your task list. The daily note is one click away. Everything is in one place because context-switching is where work dies.
 
 ---
 
