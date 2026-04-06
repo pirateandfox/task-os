@@ -155,9 +155,22 @@ async function processAgentJobs() {
     } catch {}
     const parts = agentCommand.trim().split(/\s+/)
     const bin = parts[0]; const baseArgs = parts.slice(1)
+
+    // On Windows with shell:true, cmd.exe joins args without quoting, so any multi-word
+    // prompt passed via -p gets truncated at the first space (Claude only receives "You").
+    // Fix: write the full prompt to a temp file and pass a short quoted instruction instead.
+    // Temp file is cleaned up after the process exits.
+    let promptFile = null
+    let promptArg = job.prompt
+    if (process.platform === 'win32' && !job.prevSessionId) {
+      promptFile = path.join(os.tmpdir(), `taskos-prompt-${job.id}.txt`)
+      fs.writeFileSync(promptFile, job.prompt, 'utf8')
+      promptArg = `"Read and follow the instructions in the file: ${promptFile}"`
+    }
+
     const args = job.prevSessionId
       ? [...baseArgs, '--resume', job.prevSessionId, '-p', job.user_message || job.prompt, '--output-format', 'json']
-      : [...baseArgs, '-p', job.prompt, '--output-format', 'json']
+      : [...baseArgs, '-p', promptArg, '--output-format', 'json']
     let stdout = '', stderr = '', timedOut = false, settled = false
     // On Windows, spawn the binary directly with shell:true (uses cmd.exe, resolves PATH).
     // On Unix, use a login shell with the "$@" pattern so the prompt is passed as a proper
@@ -172,6 +185,7 @@ async function processAgentJobs() {
       if (settled) return
       settled = true
       clearTimeout(timeout); runningJobs--
+      if (promptFile) { try { fs.unlinkSync(promptFile) } catch {} }
       let result = stdout.trim(); let sessionId = null
       try { const p = JSON.parse(stdout); result = p.result ?? result; sessionId = p.session_id ?? null } catch {}
       const status = code === 0 ? 'done' : 'failed'
@@ -259,6 +273,7 @@ export function setupIpcHandlers(onMcpPortChange) {
   // Habits
   ipcMain.handle('habits:list', (_, date) => dbCall('listHabits', date))
   ipcMain.handle('habits:create', (_, body) => dbCall('createHabit', body))
+  ipcMain.handle('habits:update', (_, body) => dbCall('updateHabit', body))
   ipcMain.handle('habits:log', (_, habitId, date, status, notes) => dbCall('logHabit', habitId, date, status, notes))
   ipcMain.handle('habits:unlog', (_, habitId, date) => dbCall('unlogHabit', habitId, date))
 
