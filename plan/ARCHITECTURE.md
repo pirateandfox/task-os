@@ -74,17 +74,29 @@ A different product mode where a company runs a Task OS instance and multiple pe
 
 ---
 
-## Platform Targets
+## Monorepo Structure
+
+Single repo (`taskos/`) managed with **pnpm workspaces + Turborepo**.
 
 ```
 taskos/
   packages/
-    core/        ← Automerge documents, data model, sync logic, keypair/crypto
-    mcp/         ← MCP server (Claude integration)
-    desktop/     ← Electron app
-    mobile/      ← React Native app (iOS + Android)
-    sync-server/ ← NestleJS relay server
+    core/          ← Automerge documents, data model, CRDT sync logic, keypair/crypto
+                     Shared by desktop, mobile, and sync-server
+    mcp/           ← MCP server (Claude integration) — desktop only
+    desktop/       ← Electron app (React/TypeScript)
+    mobile/        ← Expo (React Native) app — iOS + Android
+    sync-server/   ← NestleJS relay server (open source)
+    billing/       ← NestleJS billing service, Stripe integration (private/closed source)
 ```
+
+**Open source policy:**
+- `core`, `mcp`, `desktop`, `mobile`, `sync-server` — all MIT licensed, fully open
+- `billing` — private repo, not open source (Stripe glue, no reason to expose)
+- Self-hosters get everything they need to run their own full stack from the open source packages
+- Hosted relay + billing is the commercial offering
+
+## Platform Targets
 
 **Desktop** is the primary environment — full MCP integration, Claude talks to the local Automerge store directly. Fast, local, AI-native. Desktop app stays **Electron**:
 
@@ -93,12 +105,13 @@ taskos/
 - MCP server runs as a utilityProcess alongside the app (current architecture)
 - Frontend stays React/TypeScript
 
-**Mobile** is **React Native** (not React Native Web):
+**Mobile** is **Expo (React Native)** — iOS + Android:
 
 - Installed on device — encryption key never leaves the device
 - Same trust model as desktop: relay sees only encrypted blobs
 - React Native Web rejected: JS served from a web server at runtime, which would require trusting the server not to exfiltrate keys — breaks the E2E encryption guarantee
 - No web app for task data for the same reason
+- Expo chosen for: managed build pipeline (EAS Build), OTA updates, strong ecosystem, avoids native toolchain complexity for most features
 
 **Web** is limited to unauthenticated surfaces: marketing site, public/shared task views (if a user opts to share). Not a home for private task data.
 
