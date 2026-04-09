@@ -160,6 +160,12 @@ function initSchema(db) {
     db.exec(`ALTER TABLE contexts ADD COLUMN sort_order INTEGER`);
   }
 
+  // Migrations for habits table
+  const habitCols = db.prepare(`PRAGMA table_info(habits)`).all().map(r => r.name);
+  if (!habitCols.includes('recurrence_days')) {
+    db.exec(`ALTER TABLE habits ADD COLUMN recurrence_days TEXT`);
+  }
+
   // Seed default contexts on first run
   const { c } = db.prepare('SELECT count(*) as c FROM contexts').get();
   if (c === 0) {
@@ -230,9 +236,15 @@ export function rruleToText(recurrence) {
 export function nextRecurrenceDate(baseDate, recurrence) {
   if (!recurrence) return null;
   try {
-    const rruleStr = toRruleString(recurrence);
+    let rruleStr = toRruleString(recurrence);
     // Anchor to midnight UTC on the day after baseDate — purely date-based, no current time involved.
     const dtstart = new Date(new Date(baseDate + 'T00:00:00Z').getTime() + 86400000);
+    // FREQ=MONTHLY without BYMONTHDAY would anchor to dtstart's day-of-month, causing 1-day drift
+    // on each completion. Fix by explicitly anchoring to baseDate's day-of-month.
+    if (rruleStr === 'FREQ=MONTHLY') {
+      const dom = parseInt(baseDate.slice(8, 10), 10);
+      rruleStr = `FREQ=MONTHLY;BYMONTHDAY=${dom}`;
+    }
     const rule = rrulestr('RRULE:' + rruleStr, { dtstart });
     const next = rule.after(dtstart, true); // inclusive: first occurrence on or after dtstart
     return next ? next.toISOString().slice(0, 10) : null;

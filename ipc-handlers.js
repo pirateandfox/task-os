@@ -177,7 +177,7 @@ async function processAgentJobs() {
     // argument rather than interpolated into the shell command (safe for multi-line prompts).
     const proc = process.platform === 'win32'
       ? spawn(bin, args, { cwd: job.agent_path, stdio: ['ignore', 'pipe', 'pipe'], shell: true })
-      : spawn(process.env.SHELL || '/bin/zsh', ['-l', '-c', `${bin} "$@"`, '--', ...args], { cwd: job.agent_path, stdio: ['ignore', 'pipe', 'pipe'] })
+      : spawn(process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash'), ['-i', '-l', '-c', `${bin} "$@"`, '--', ...args], { cwd: job.agent_path, stdio: ['ignore', 'pipe', 'pipe'] })
     proc.stdout.on('data', d => { stdout += d })
     proc.stderr.on('data', d => { stderr += d })
     const timeout = setTimeout(() => { timedOut = true; proc.kill('SIGKILL') }, 15 * 60 * 1000)

@@ -119,7 +119,9 @@ export const toolDefs = [
         recurrence:      { type: 'string', description: 'daily | weekdays | weekly | monthly | null to clear' },
         parent_id:       { type: 'string', description: 'ID of parent task (for subtasks). Pass empty string to clear.' },
         links:           { type: 'array', items: { type: 'object' }, description: 'Array of link objects e.g. [{"url": "/path/to/file.md"}]. Replaces existing links.' },
-        agent_path:      { type: 'string', description: 'Absolute path to the agent folder for this task. Pass empty string to clear.' },
+        agent_path:          { type: 'string', description: 'Absolute path to the agent folder for this task. Pass empty string to clear.' },
+        agent_autorun:       { type: 'boolean', description: 'Whether the agent should run automatically on a schedule.' },
+        agent_autorun_time:  { type: 'string', description: 'HH:MM time for the daily auto-run (e.g. "05:00"). Requires agent_autorun: true.' },
       },
       required: ['task_id'],
     },
@@ -303,6 +305,7 @@ export const handlers = {
       'title', 'description', 'status', 'my_priority', 'energy_required',
       'context', 'project', 'tags', 'source_url', 'due_date', 'start_date', 'surface_after',
       'task_type', 'event_time', 'end_time', 'recurrence', 'parent_id', 'agent_path',
+      'agent_autorun', 'agent_autorun_time',
     ];
 
     const updates = {};
@@ -318,6 +321,10 @@ export const handlers = {
     if (args.ai_context !== undefined) {
       updates.ai_context = appendAiContext(task.ai_context, args.ai_context);
       setClauses.push('ai_context = @ai_context');
+    }
+
+    if (args.agent_autorun !== undefined) {
+      updates.agent_autorun = args.agent_autorun ? 1 : 0;
     }
 
     if (args.links !== undefined) {
