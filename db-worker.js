@@ -35,9 +35,14 @@ function nextRecurrenceDate(fromDate, rule) {
     return next ? next.toISOString().slice(0, 10) : null
   } catch { return null }
 }
+const DAY_ABBR_TO_DOW = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 }
 function isHabitDueOn(habit, dateStr) {
   const d = new Date(dateStr + 'T12:00:00Z')
   const dow = d.getUTCDay()
+  if (habit.recurrence_days) {
+    const days = habit.recurrence_days.split(',').map(s => DAY_ABBR_TO_DOW[s.trim()]).filter(n => n !== undefined)
+    return days.includes(dow)
+  }
   switch (habit.recurrence) {
     case 'daily':    return true
     case 'weekdays': return dow >= 1 && dow <= 5
@@ -193,6 +198,7 @@ function migrate() {
   tryAlter('ALTER TABLE contexts ADD COLUMN label TEXT')
   tryAlter("ALTER TABLE contexts ADD COLUMN color TEXT NOT NULL DEFAULT '#888888'")
   tryAlter('ALTER TABLE contexts ADD COLUMN sort_order INTEGER')
+  tryAlter('ALTER TABLE habits ADD COLUMN recurrence_days TEXT')
   // Backfill label from display_name for rows created before label column existed
   tryAlter("UPDATE contexts SET label = display_name WHERE label IS NULL AND display_name IS NOT NULL")
   // Always ensure the default context exists
@@ -465,7 +471,7 @@ function listHabits(date) {
   const logs = db.prepare(`SELECT * FROM habit_logs WHERE date >= ? AND date <= ?`).all(days[0], days[6])
   const logMap = {}
   for (const l of logs) logMap[`${l.habit_id}:${l.date}`] = l
-  return allHabits.filter(h => isHabitDueOn(h, d)).map(h => ({
+  return allHabits.map(h => ({
     ...h,
     today_log: logMap[`${h.id}:${d}`] ?? null,
     week: days.map(day => ({ date: day, due: isHabitDueOn(h, day), log: logMap[`${h.id}:${day}`] ?? null })),
@@ -474,7 +480,7 @@ function listHabits(date) {
 function createHabit(body) {
   if (!body.title) throw new Error('title required')
   const id = crypto.randomUUID(); const now = nowIso()
-  db.prepare('INSERT INTO habits (id, title, description, recurrence, active, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)').run(id, body.title.trim(), body.description ?? null, body.recurrence ?? 'daily', now, now)
+  db.prepare('INSERT INTO habits (id, title, description, recurrence, recurrence_days, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)').run(id, body.title.trim(), body.description ?? null, body.recurrence ?? 'daily', body.recurrence_days ?? null, now, now)
   return { id }
 }
 function logHabit(habitId, date, status, notes) {
@@ -484,6 +490,17 @@ function logHabit(habitId, date, status, notes) {
 }
 function unlogHabit(habitId, date) {
   db.prepare('DELETE FROM habit_logs WHERE habit_id = ? AND date = ?').run(habitId, date)
+  return { ok: true }
+}
+function updateHabit(body) {
+  if (!body.id) throw new Error('id required')
+  const sets = ['updated_at = ?']; const params = [nowIso()]
+  if (body.title !== undefined)           { sets.push('title = ?');            params.push(body.title) }
+  if (body.description !== undefined)     { sets.push('description = ?');      params.push(body.description) }
+  if (body.recurrence !== undefined)      { sets.push('recurrence = ?');       params.push(body.recurrence) }
+  if (body.recurrence_days !== undefined) { sets.push('recurrence_days = ?');  params.push(body.recurrence_days || null) }
+  if (body.active !== undefined)          { sets.push('active = ?');           params.push(body.active ? 1 : 0) }
+  db.prepare(`UPDATE habits SET ${sets.join(', ')} WHERE id = ?`).run(...params, body.id)
   return { ok: true }
 }
 
@@ -525,6 +542,10 @@ function createAgentJob(taskId, userMessage) {
     `Task: ${task.title}`
   ]
   if (task.description) parts.push(task.description)
+  const links = (() => { try { return JSON.parse(task.links || '[]') } catch { return [] } })()
+  if (links.length > 0) parts.push(`\nAttached links:\n${links.map(l => `- ${l}`).join('\n')}`)
+  const attachments = db.prepare('SELECT filename, local_path, url FROM attachments WHERE task_id = ? ORDER BY created_at ASC').all(taskId)
+  if (attachments.length > 0) parts.push(`\nAttached files:\n${attachments.map(a => `- ${a.filename}: ${a.local_path || a.url}`).join('\n')}`)
   if (existingNotes.length > 0) {
     parts.push('\n--- Conversation ---')
     for (const n of existingNotes) parts.push(`[${n.author}]: ${n.body}`)
@@ -577,7 +598,7 @@ const METHODS = {
   getDailyNote, saveDailyNote,
   listContexts, createContext, updateContext, deleteContext,
   listProjects, archiveProject, unarchiveProject, deleteProject,
-  listHabits, createHabit, logHabit, unlogHabit,
+  listHabits, createHabit, updateHabit, logHabit, unlogHabit,
   listAttachments, insertAttachment, getAttachment, deleteAttachment,
   getPendingAttachments, updateAttachmentStorage,
   listAgentJobs, getAgentJob, createAgentJob,
