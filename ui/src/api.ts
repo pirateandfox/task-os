@@ -101,10 +101,12 @@ export async function deleteProject(name: string): Promise<void> {
 
 export interface Agent {
   name: string
+  context: string | null
   description: string | null
   command: string | null
   path: string
   relativePath: string
+  folder: string | null   // top-level project folder name (null for agents at the scan root)
 }
 
 export async function fetchAgents(): Promise<Agent[]> {

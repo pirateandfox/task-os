@@ -153,6 +153,18 @@ export default function Settings({ open, fullscreen, onClose, onToggleFullscreen
           <span className="settings-hint">Folder scanned recursively for agent.config files. Set wider than terminal CWD to find agents in sister repos.</span>
         </div>
         <div className="settings-row">
+          <label className="settings-label">Exclude agent folders</label>
+          <input
+            className="settings-input"
+            type="text"
+            value={settings.agentExcludeFolders ?? ''}
+            onChange={e => set('agentExcludeFolders', e.target.value)}
+            placeholder="e.g. projects-template, sandbox"
+            spellCheck={false}
+          />
+          <span className="settings-hint">Comma-separated folder names to skip when scanning for agents.</span>
+        </div>
+        <div className="settings-row">
           <label className="settings-label">Terminal auto-run command</label>
           <input
             className="settings-input"

@@ -394,11 +394,13 @@ export default function DetailPanel({ taskId, onClose, onMutate, onDelete, termi
                     onChange={e => { patch({ agent_path: e.target.value || null }); setLatestJob(null) }}
                   >
                     <option value="">None</option>
-                    {agents.map(a => (
-                      <option key={a.path} value={a.path} title={a.description ?? undefined}>
-                        {a.name}
-                      </option>
-                    ))}
+                    {agents
+                      .filter(a => !a.context || a.context === task.context)
+                      .map(a => (
+                        <option key={a.path} value={a.path} title={a.description ?? undefined}>
+                          {(!a.context && a.folder) ? `${a.folder} / ${a.name}` : a.name}
+                        </option>
+                      ))}
                   </select>
                   {task.agent_path && (!latestJob?.session_id || !task.agent_resume) && (
                     <button

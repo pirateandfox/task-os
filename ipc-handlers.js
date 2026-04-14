@@ -112,26 +112,38 @@ async function syncPendingAttachments() {
 
 // ── Agent scanner ─────────────────────────────────────────────────────────────
 
-async function scanAgents(root) {
+async function scanAgents(root, excludeFolders = []) {
   const agents = []
   if (!root) return agents
   try { await fs.promises.access(root) } catch { return agents }
-  async function walk(dir) {
+  const excluded = new Set(excludeFolders.map(f => f.trim()).filter(Boolean))
+  async function walk(dir, topLevelFolder) {
     let entries
     try { entries = await fs.promises.readdir(dir, { withFileTypes: true }) } catch { return }
     for (const entry of entries) {
       if (!entry.isDirectory() || entry.name.startsWith('.') || entry.name === 'node_modules') continue
+      if (excluded.has(entry.name)) continue
       const fullPath = path.join(dir, entry.name)
+      // Track the top-level subfolder under root so we can label global agents
+      const folder = topLevelFolder ?? entry.name
       const configPath = path.join(fullPath, 'agent.config')
       try {
         await fs.promises.access(configPath)
         const config = JSON.parse(await fs.promises.readFile(configPath, 'utf8'))
-        agents.push({ name: config.name ?? entry.name, description: config.description ?? null, command: config.command ?? null, path: fullPath, relativePath: path.relative(root, fullPath) })
+        agents.push({
+          name: config.name ?? entry.name,
+          context: config.context ?? null,
+          description: config.description ?? null,
+          command: config.command ?? null,
+          path: fullPath,
+          relativePath: path.relative(root, fullPath),
+          folder,
+        })
       } catch {}
-      await walk(fullPath)
+      await walk(fullPath, folder)
     }
   }
-  await walk(root)
+  await walk(root, null)
   return agents
 }
 
@@ -153,31 +165,63 @@ async function processAgentJobs() {
       const cfg = JSON.parse(fs.readFileSync(path.join(job.agent_path, 'agent.config'), 'utf8'))
       if (cfg.command) agentCommand = cfg.command
     } catch {}
-    const parts = agentCommand.trim().split(/\s+/)
-    const bin = parts[0]; const baseArgs = parts.slice(1)
+    const isTemplateCommand = agentCommand.includes('{spec_file}') || agentCommand.includes('{description}')
+    const shellBin = process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash')
 
-    // On Windows with shell:true, cmd.exe joins args without quoting, so any multi-word
-    // prompt passed via -p gets truncated at the first space (Claude only receives "You").
-    // Fix: write the full prompt to a temp file and pass a short quoted instruction instead.
-    // Temp file is cleaned up after the process exits.
-    let promptFile = null
-    let promptArg = job.prompt
-    if (process.platform === 'win32' && !job.prevSessionId) {
-      promptFile = path.join(os.tmpdir(), `taskos-prompt-${job.id}.txt`)
-      fs.writeFileSync(promptFile, job.prompt, 'utf8')
-      promptArg = `"Read and follow the instructions in the file: ${promptFile}"`
-    }
-
-    const args = job.prevSessionId
-      ? [...baseArgs, '--resume', job.prevSessionId, '-p', job.user_message || job.prompt, '--output-format', 'json']
-      : [...baseArgs, '-p', promptArg, '--output-format', 'json']
     let stdout = '', stderr = '', timedOut = false, settled = false
-    // On Windows, spawn the binary directly with shell:true (uses cmd.exe, resolves PATH).
-    // On Unix, use a login shell with the "$@" pattern so the prompt is passed as a proper
-    // argument rather than interpolated into the shell command (safe for multi-line prompts).
-    const proc = process.platform === 'win32'
-      ? spawn(bin, args, { cwd: job.agent_path, stdio: ['ignore', 'pipe', 'pipe'], shell: true })
-      : spawn(process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash'), ['-i', '-l', '-c', `${bin} "$@"`, '--', ...args], { cwd: job.agent_path, stdio: ['ignore', 'pipe', 'pipe'] })
+    let proc, promptFile = null
+
+    if (isTemplateCommand) {
+      // Template mode: supports {spec_file} and {description} placeholders.
+      // Runs the command as a raw shell string so pipes, redirects, etc. work.
+      // Does NOT append -p or --output-format json — the command is fully specified.
+      let resolvedCommand = agentCommand
+
+      if (agentCommand.includes('{spec_file}')) {
+        const specPath = path.join(job.agent_path, 'spec.md')
+        fs.writeFileSync(specPath, job.prompt, 'utf8')
+        resolvedCommand = resolvedCommand.replace(/\{spec_file\}/g, './spec.md')
+      }
+
+      if (agentCommand.includes('{description}') || agentCommand.includes('{title}')) {
+        const task = job.task_id ? await dbCall('getTask', job.task_id) : null
+        if (agentCommand.includes('{description}')) {
+          const description = (task?.description ?? job.user_message ?? '').replace(/\n/g, ' ').replace(/'/g, "\\'")
+          resolvedCommand = resolvedCommand.replace(/\{description\}/g, description)
+        }
+        if (agentCommand.includes('{title}')) {
+          const title = (task?.title ?? '').replace(/'/g, "\\'")
+          resolvedCommand = resolvedCommand.replace(/\{title\}/g, title)
+        }
+      }
+
+      proc = process.platform === 'win32'
+        ? spawn('cmd.exe', ['/c', resolvedCommand], { cwd: job.agent_path, stdio: ['ignore', 'pipe', 'pipe'] })
+        : spawn(shellBin, ['-i', '-l', '-c', resolvedCommand], { cwd: job.agent_path, stdio: ['ignore', 'pipe', 'pipe'] })
+    } else {
+      // Standard mode: append -p {prompt} --output-format json and use safe arg passing.
+      const parts = agentCommand.trim().split(/\s+/)
+      const bin = parts[0]; const baseArgs = parts.slice(1)
+
+      // On Windows with shell:true, cmd.exe joins args without quoting, so any multi-word
+      // prompt passed via -p gets truncated at the first space (Claude only receives "You").
+      // Fix: write the full prompt to a temp file and pass a short quoted instruction instead.
+      // Temp file is cleaned up after the process exits.
+      let promptArg = job.prompt
+      if (process.platform === 'win32' && !job.prevSessionId) {
+        promptFile = path.join(os.tmpdir(), `taskos-prompt-${job.id}.txt`)
+        fs.writeFileSync(promptFile, job.prompt, 'utf8')
+        promptArg = `"Read and follow the instructions in the file: ${promptFile}"`
+      }
+
+      const args = job.prevSessionId
+        ? [...baseArgs, '--resume', job.prevSessionId, '-p', job.user_message || job.prompt, '--output-format', 'json']
+        : [...baseArgs, '-p', promptArg, '--output-format', 'json']
+
+      proc = process.platform === 'win32'
+        ? spawn(bin, args, { cwd: job.agent_path, stdio: ['ignore', 'pipe', 'pipe'], shell: true })
+        : spawn(shellBin, ['-i', '-l', '-c', `${bin} "$@"`, '--', ...args], { cwd: job.agent_path, stdio: ['ignore', 'pipe', 'pipe'] })
+    }
     proc.stdout.on('data', d => { stdout += d })
     proc.stderr.on('data', d => { stderr += d })
     const timeout = setTimeout(() => { timedOut = true; proc.kill('SIGKILL') }, 15 * 60 * 1000)
@@ -332,7 +376,8 @@ export function setupIpcHandlers(onMcpPortChange) {
   // Agents
   ipcMain.handle('agents:list', () => {
     const settings = loadSettings()
-    return scanAgents(settings.agentsRoot || settings.terminalCwd || process.env.HOME)
+    const excludeFolders = (settings.agentExcludeFolders ?? '').split(',').map(f => f.trim()).filter(Boolean)
+    return scanAgents(settings.agentsRoot || settings.terminalCwd || process.env.HOME, excludeFolders)
   })
   ipcMain.handle('agent-jobs:list', (_, taskId) => dbCall('listAgentJobs', taskId))
   ipcMain.handle('agent-jobs:get', (_, id) => dbCall('getAgentJob', id))
