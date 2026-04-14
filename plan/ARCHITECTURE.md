@@ -2,7 +2,7 @@
 
 ## Current State
 
-The existing Task OS is a working, battle-tested personal tool: SQLite database, MCP server, Electron app. It has been in daily use for over a year and the schema is proven. This document captures the architecture for **Task OS v2** — adding sync, mobile, and multi-device support without throwing away what works.
+The existing Task OS is a working, battle-tested personal tool: SQLite database, MCP server, Electron app. It has been in daily use and the schema is proven. This document captures the architecture for **Task OS v2** — adding sync, multi-device, multi-instance, and external integration support without throwing away what works.
 
 **Core principle: evolve, don't rewrite.**
 
@@ -10,85 +10,161 @@ The existing Task OS is a working, battle-tested personal tool: SQLite database,
 
 ## Core Philosophy
 
-**Local-first on desktop, cloud-backed on mobile.**
+**Instances, not users.** You authenticate to an instance, not to an account within a system. Each TaskOS installation is an instance. You can have multiple instances (personal Mac, work cloud VM) and access them all from a single web or mobile app. Teammates access a shared instance by being granted access to it — no per-user data partitioning within an instance.
 
-- Desktop app is fast because it reads/writes local SQLite directly — that stays
-- MCP server hits local SQLite — that stays, zero latency for Claude sessions
-- Mobile hits the API — always online, simpler
-- Sync is a background concern, not the core architecture
+**Task data never touches the NestJS backend.** NestJS is the auth, billing, and instance registry layer only. All task data lives in per-user Turso databases and syncs directly between instances and clients.
 
 ---
 
 ## Architecture Overview
 
 ```
-┌─────────────────────┐         ┌──────────────────────┐
-│   Desktop (Electron) │         │   Mobile (Expo)       │
-│                     │         │                      │
-│  SQLite (primary)   │◄──sync──►│  NestleJS API        │
-│  MCP server         │         │  (read/write)         │
-│  Local SQLite R/W   │         │                      │
-└─────────────────────┘         └──────────────────────┘
-                                          │
-                                ┌─────────▼──────────┐
-                                │  NestleJS Backend   │
-                                │  Postgres (primary) │
-                                │  REST API           │
-                                └────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│                  NestJS Backend                      │
+│  Postgres: users, orgs, billing, instance registry  │
+│  NO task data stored here                           │
+└──────────────┬──────────────────────────────────────┘
+               │ auth + instance lookup
+    ┌──────────┼────────────────────┐
+    ▼          ▼                    ▼
+[Your Mac]  [Cloud VM]         [Web / Mobile]
+TaskOS       TaskOS              thin client
+Electron     Electron            React / React Native
+    │            │                    │
+    └────────────┴────────────────────┘
+                 │
+         ┌───────▼────────┐
+         │  Turso (cloud) │  ← per-user SQLite, always accessible
+         │  your task DB  │
+         └────────────────┘
 ```
 
-### Desktop
+### NestJS Backend (auth + registry only)
 
-- Reads and writes **local SQLite** — same as today, no change
-- MCP server talks to local SQLite — stays fast, stays offline-capable
-- Background sync worker pushes local changes to the API and pulls remote changes
-- Works fully offline — sync catches up when connectivity returns
+- User accounts, orgs, billing (Stripe)
+- Instance registry: each TaskOS install registers with a UUID, last-heartbeat timestamp, human name ("Justin's Mac", "Work Cloud VM")
+- On login, returns: Turso DB credentials + list of registered instances + their online status
+- **Does not store or proxy task data**
 
-### Backend (NestleJS + Postgres)
+### Turso (per-user task database)
 
-- Canonical remote store
-- REST API consumed by mobile and the sync worker
-- Postgres mirrors the SQLite schema — same fields, same structure
-- Simple timestamp-based sync: `updated_at` on every row, last-write-wins
-- Hosted by Justin; self-hostable (open source)
+- Each user gets one Turso SQLite database provisioned on signup
+- Schema is identical to the existing local SQLite — no translation layer
+- Turso embedded replica on desktop: local reads stay fast, writes sync to cloud automatically
+- Web/mobile connect directly to Turso using credentials from NestJS
+- Works as the "always-on" store — accessible even when all local machines are offline
+
+### Desktop (Electron — unchanged)
+
+- Swaps `better-sqlite3` for Turso embedded replica client
+- Local file path for the replica; schema and all queries stay the same
+- MCP server hits local replica — zero latency for Claude sessions
+- Works fully offline; syncs when connectivity returns
+- Registers heartbeat with NestJS every few minutes
+
+### Web App (thin client)
+
+- Hosted static React app (same UI codebase)
+- Login via NestJS → get Turso credentials + instance list
+- Reads/writes directly to Turso
+- Instance switcher: pick which instance's data to view (if you have multiple)
+- Shows instance online status from NestJS heartbeat data
 
 ### Mobile (Expo / React Native)
 
-- Reads and writes through the NestleJS API directly
-- No local database on mobile — always-online is acceptable for phone usage
-- If offline: queue writes locally, flush when connection returns (simple queue, not CRDT)
+- Same pattern as web: login via NestJS, read/write Turso directly
+- No local database — always-online acceptable for phone
+- Offline: queue writes, flush on reconnect
+
+---
+
+## Cloud VM Instances
+
+TaskOS runs on Linux identically to Mac — the Electron app has a Linux build. A cloud VM instance is just TaskOS installed on a Linux server.
+
+**Recommended stack for a cloud instance:**
+- Hetzner CX22 (~$5-6/mo) or any Linux VPS
+- Tailscale for private network access (no public exposure needed)
+- noVNC + Xfce for browser-based desktop access (OAuth re-auth, MCP setup, etc.)
+- Cloudflare Tunnel if the API needs to be reachable from external services (e.g. Slack)
+- TaskOS Linux build installed and running
+
+**Use cases for cloud instances:**
+- Company shared instance: teammates connect via Tailscale, shared contexts/agents
+- Always-on personal instance: agents run even when your Mac is closed
+- Proof of concept: existing cloud Linux box + Linux release + noVNC = running today
+
+**Agent considerations:** Cloud agents often need MCP servers with OAuth (Shopify, etc.) and occasional browser re-authentication. noVNC provides the desktop access for this. TaskOS does not try to abstract or containerize the execution environment — the machine is the machine.
+
+---
+
+## Multi-Instance Model
+
+The web and mobile apps maintain a list of instances associated with your account. Instances are registered by NestJS when the TaskOS app authenticates. You switch between instances like switching workspaces.
+
+```
+Web/Mobile instance switcher:
+  • Justin's Mac          (last seen 2 min ago — online)
+  • Work Cloud VM         (last seen 1 min ago — online)
+  • Justin's MacBook Air  (last seen 6 hours ago — offline)
+```
+
+All instances share the same Turso DB (same task data). "Online" means agents can be triggered on that machine right now. Offline instances still show current task data (from Turso) but agent jobs queue until the instance comes back online.
+
+---
+
+## External Integrations (Slack, etc.)
+
+### Incoming: Slack → TaskOS
+
+- Slack Block Kit modal mirrors the task creation form
+- User submits → Slack POSTs to a webhook endpoint (NestJS or Cloudflare Worker)
+- Webhook creates task via TaskOS API
+
+### Thread-as-conversation
+
+```
+User submits Slack form
+  → task created in TaskOS
+  → bot posts confirmation message in Slack channel
+
+User replies in thread
+  → Slack sends reply to webhook
+  → webhook adds reply as a note on the task
+  → agent picks up new context on next run
+
+Agent completes / produces output
+  → TaskOS pushes result to Slack thread via bot
+  → conversation continues naturally in Slack
+```
+
+### API Security
+
+The TaskOS API endpoint must be protected when exposed to external services. Required:
+- **API token** on all incoming webhook requests — generated per-integration, stored in NestJS, verified on every request
+- **Slack signing secret** verification — Slack signs every outgoing request; verify the signature before processing
+- Cloudflare Tunnel handles HTTPS termination; the API itself stays on localhost on the VM
+
+Anyone hitting the port without a valid token gets a 401. The token is configured once in the Slack app settings and in TaskOS settings.
 
 ---
 
 ## Sync Strategy
 
-**Last-write-wins on `updated_at`.** Simple, correct for the actual use case.
+**Turso handles sync automatically** via embedded replica. No custom sync worker needed for the desktop↔cloud case.
 
-Real conflict rate for a single user across a desktop and phone is near zero — you're not editing the same task on two devices simultaneously in practice. The complexity of CRDT conflict resolution is not justified by the actual conflict scenarios that occur.
-
-Sync flow (desktop → server):
-1. Desktop writes to local SQLite (instant, as today)
-2. Sync worker checks for rows where `updated_at > last_synced_at`
-3. Pushes changed rows to the API
-4. API writes to Postgres, returns server timestamp
-5. Desktop records `last_synced_at`
-
-Sync flow (server → desktop):
-1. Sync worker polls for changes since `last_synced_at`
-2. Pulls changed rows
-3. Writes to local SQLite if server `updated_at` > local `updated_at`
-
-Sync runs on a short interval (e.g. 30s) and on every local write.
+For the rare conflict case (same task edited on two devices while both offline):
+- Last-write-wins on `updated_at`
+- Notes/conversation history is append-only — no conflicts possible
+- Real conflict rate for single-user across devices is near zero in practice
 
 ---
 
 ## Data Model
 
-The existing SQLite schema carries forward unchanged into Postgres. No migration of the data model — only a migration of the data itself (a one-time export/import script when v2 launches).
+Existing SQLite schema carries forward unchanged into Turso. No migration of the data model — only provisioning a Turso database and copying data on first sync.
 
-Key tables: `tasks`, `habits`, `habit_logs`, `contexts`, `daily_notes`, `attachments`
-
-Task ordering (`sort_order INTEGER`) stays as-is. Last-write-wins handles concurrent reorders acceptably — the conflict rate is low enough that the simple solution is correct.
+Key tables: `tasks`, `habits`, `habit_logs`, `contexts`, `daily_notes`, `attachments`, `agent_jobs`, `notes`, `sync_log`
 
 ---
 
@@ -99,59 +175,61 @@ taskos/
   packages/
     desktop/       ← Electron app (current codebase, evolved)
     mobile/        ← Expo (React Native) — iOS + Android
-    backend/       ← NestleJS + Postgres API + sync endpoint
-    billing/       ← Stripe integration (private repo)
+    web/           ← React thin client (same UI components as desktop)
+    backend/       ← NestJS + Postgres (auth, billing, instance registry)
+    billing/       ← Stripe integration (private)
+    types/         ← Shared TypeScript types
 ```
 
-**Monorepo:** pnpm workspaces. Shared TypeScript types between desktop, mobile, and backend via a lightweight `types/` package.
+**Monorepo:** pnpm workspaces.
 
-**Desktop** stays Electron. No rewrite. MCP server stays as a utilityProcess. The sync worker is a new background process added alongside the existing ones.
+---
 
-**Mobile** is Expo (React Native). Hits the NestleJS API. Standard React Native patterns — no CRDT, no local database complexity.
+## Agent Packaging (future)
 
-**No web app** for task data. A web app would require trusting the server with decryption keys or abandoning E2E encryption — neither is acceptable. Marketing site only.
+To share agents between instances:
+- Package an agent folder as a zip (agent code + `agent.config`)
+- POST to a remote instance's API (authenticated)
+- Remote instance unpacks into its `agentsRoot` directory
+- Agent immediately available in that instance's TaskOS
 
 ---
 
 ## File Attachments
 
-Unchanged from current implementation. S3-compatible object storage (Cloudflare R2 recommended). Files upload directly from client to the user's bucket via presigned URLs. The backend stores metadata only.
+Unchanged from current implementation. S3-compatible object storage (Cloudflare R2). Files upload directly from client via presigned URLs. Backend stores metadata only.
 
 ---
 
 ## Identity & Auth
 
-**Email + password for the API.** Standard auth — JWT tokens, refresh tokens. No keypair complexity.
-
-On desktop: credentials stored in the OS keychain. Sync worker authenticates with a long-lived token. User logs in once, stays logged in.
-
-On mobile: standard login screen, token stored in secure storage.
-
-**Privacy position:** Justin's hosted backend stores task data. Standard data custody — privacy policy, no data selling, Postgres with backups. This is the same trust model as Todoist, Things, Linear. It is good enough and honest about what it is.
+- Email + password via NestJS. JWT + refresh tokens.
+- Desktop: credentials in OS keychain, long-lived token
+- Mobile/web: standard login, token in secure storage
+- Instance auth: each instance has a UUID + API token stored in NestJS; used for heartbeats and webhook verification
 
 ---
 
 ## Billing
 
-- Stripe for payments
-- Stripe Customer Portal for subscription management (no custom billing UI needed)
-- Subscription status checked by the backend on API requests
-- Free tier: local only, no sync
-- Paid tier: sync enabled
+- Stripe for payments via NestJS
+- What you're paying for: Turso database hosting + sync
+- Turso cost per user is tiny (personal task data is 1-5MB) — comfortable margin at any reasonable price point
 
 ```
-Free:    Local only
-$5/mo:   Sync across devices + BYOS file attachments
-$10/mo:  Sync + hosted file storage (R2 under the hood)
+Free:      Local only, no sync, no Turso provisioning
+$5/mo:     Sync (Turso DB provisioned), web + mobile access
+$10/mo:    Sync + hosted file storage (R2)
+Cloud VM:  Setup fee + ~$25/mo (we host a Hetzner VM for you, configured with TaskOS + Claude Code + Tailscale + noVNC)
 ```
 
 ---
 
 ## Open Source Strategy
 
-- `desktop`, `mobile`, `backend` packages: MIT licensed, fully open source
-- Self-hosters can run the full stack — backend + their own Postgres
-- `billing` package: private (Stripe keys, payment logic)
+- `desktop`, `mobile`, `web`, `backend` packages: MIT licensed
+- Self-hosters can run the full stack with their own Turso + Postgres
+- `billing` package: private
 - Hosted backend is the commercial offering — sell convenience, not software
 
 ---
@@ -160,20 +238,33 @@ $10/mo:  Sync + hosted file storage (R2 under the hood)
 
 Everything. The entire existing codebase is v2 desktop. No rewrite:
 
-- SQLite schema and all migrations
+- SQLite schema and all migrations (becomes Turso embedded replica)
 - MCP server and all tools
 - All task behaviors: recurrence, surface_after, contexts, projects
 - Agent spawning and autorun
 - Habits system
 - Morning briefing, triage, briefing workflows
 - Electron app, UI components, IPC handlers
+- Attachment storage (S3/R2)
 
-V2 adds: sync worker, NestleJS backend, Expo mobile app.
+V2 adds: Turso swap, NestJS backend, Expo mobile, React web thin client, instance registry, Slack integration.
+
+---
+
+## Build Order
+
+1. **Linux server mode** — headless `api.js` + MCP server without Electron (for lightweight cloud deployments and background service use)
+2. **Turso swap** — replace `better-sqlite3` with Turso embedded replica; schema stays identical
+3. **NestJS instance registry** — user accounts, instance registration, heartbeat endpoint
+4. **Web thin client** — React app pointing at Turso, instance switcher, login via NestJS
+5. **Mobile** — Expo app, same pattern as web
+6. **Slack integration** — Block Kit modal, webhook receiver, thread-as-conversation
+7. **Agent packaging** — zip/install agents across instances
 
 ---
 
 ## Open Questions
 
-- **Sync conflict UI** — what does the app show when a rare conflict is detected and resolved?
-- **Selective sync** — do all contexts sync, or can you mark a context as local-only?
-- **Team/shared contexts** — future; not in scope for v2
+- **Selective sync** — can you mark a context as local-only (never syncs to Turso)?
+- **Context sharing between users** — future; copy a context + its tasks to another user's Turso DB
+- **Sync conflict UI** — what does the app show when a conflict is detected and resolved?

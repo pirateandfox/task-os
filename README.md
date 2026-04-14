@@ -2,7 +2,9 @@
 
 **Project management for the AI era.**
 
-Task OS gives Claude full read/write access to your tasks, daily notes, and habit log — all in one local app. Not just a task manager Claude can read. A system Claude actively operates: creating tasks, triaging your backlog, running your morning briefing, dispatching autonomous agents to complete work, and building a persistent memory of your days that makes weekly reviews and long-term planning actually useful.
+Give your AI agent full read/write access to your tasks, daily notes, and habit log — all in one local app. Not just a task manager your agent can read. A system your agent actively operates: creating tasks, triaging your backlog, running your morning briefing, dispatching autonomous agents to complete work, and building a persistent memory of your days that makes weekly reviews and long-term planning actually useful.
+
+Built for Claude Code via MCP. Works with any command-line AI agent.
 
 Your data lives in a local SQLite database on your machine. Nothing goes to a server. The app is free and open source.
 
@@ -16,17 +18,19 @@ Your data lives in a local SQLite database on your machine. Nothing goes to a se
 
 The AI project management space has split into two camps. One camp uses markdown files — tasks as text, everything in a folder, Claude reads the files. Simple, but no structure, no recurrence, no real query capability. The other camp keeps using traditional task managers and just asks Claude questions about them — but Claude has no write access, no persistence, no memory across sessions.
 
-Task OS is a third approach: **a structured task database that Claude lives inside of.**
+Task OS is a third approach: **a structured task database that your AI agent lives inside of.**
 
-Claude has full read/write access to your tasks, your daily notes, and your habit log simultaneously. That combination is what makes it different. Your tasks capture what you need to do. Your daily notes capture everything else — the meeting that went sideways, the idea you had at 2pm, the thing you wanted to remember but didn't have time to turn into a task. Together, they give Claude a real memory of your work across days and weeks.
+Your agent gets full read/write access to your tasks, your daily notes, and your habit log simultaneously. That combination is what makes it different. Your tasks capture what you need to do. Your daily notes capture everything else — the meeting that went sideways, the idea you had at 2pm, the thing you wanted to remember but didn't have time to turn into a task. Together, they give your agent a real memory of your work across days and weeks.
+
+Task OS was designed for Claude Code and all the examples use it — but it works with any command-line AI agent. That's configurable in Settings.
 
 In practice that looks like:
 
-- **Morning:** *"What's my day look like?"* → Claude reads your overdue tasks, today's schedule, upcoming deadlines, and yesterday's notes, then tells you what to focus on and what to push.
+- **Morning:** *"What's my day look like?"* → your agent reads your overdue tasks, today's schedule, upcoming deadlines, and yesterday's notes, then tells you what to focus on and what to push.
 - **During work:** *"I need to follow up with Sarah about the contract, remind me Thursday"* → task created, snoozed, done. No switching apps.
-- **End of day:** *"Triage me"* → Claude reviews what got done, moves stale items to backlog, proposes priorities for tomorrow.
-- **Weekly review:** *"How was my week?"* → Claude reads all seven daily notes plus task completion history and gives you a real account of what happened — including the small things that never became tasks but mattered.
-- **Agents:** Assign a Claude Code agent to a task. Task OS dispatches it, captures the output, and marks the task complete. You come back to work already done.
+- **End of day:** *"Triage me"* → your agent reviews what got done, moves stale items to backlog, proposes priorities for tomorrow.
+- **Weekly review:** *"How was my week?"* → your agent reads all seven daily notes plus task completion history and gives you a real account of what happened — including the small things that never became tasks but mattered.
+- **Agents:** Assign an agent to a task. Task OS dispatches it, captures the output, and marks the task complete. You come back to work already done.
 
 The terminal is built in so you never leave the context. Claude runs in a panel below your task list. The daily note is one click away. Everything is in one place because context-switching is where work dies.
 
@@ -177,6 +181,8 @@ update_task(task_id: "...", links: [{ url: "/absolute/path/to/report.md" }])
 ```
 
 Linked `.md` files open in a markdown editor with PDF export. Linked `.html` and `.eml` files open in an email preview.
+
+**Starter agents:** Clone [taskos-projects-template](https://github.com/pirateandfox/taskos-projects-template) as your working directory to get a set of ready-to-use agents — research, writing, triage, and more. Point Settings → Working Directory at the cloned folder to activate them.
 
 ---
 

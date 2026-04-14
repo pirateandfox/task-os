@@ -12,9 +12,14 @@ function offsetDate(dateStr, days) {
   return d.toISOString().slice(0, 10);
 }
 
+const DAY_ABBR_TO_DOW = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
 function isHabitDueOn(habit, dateStr) {
   const d = new Date(dateStr + 'T12:00:00Z');
   const dow = d.getUTCDay();
+  if (habit.recurrence_days) {
+    const days = habit.recurrence_days.split(',').map(s => DAY_ABBR_TO_DOW[s.trim()]).filter(n => n !== undefined);
+    return days.includes(dow);
+  }
   switch (habit.recurrence) {
     case 'daily':    return true;
     case 'weekdays': return dow >= 1 && dow <= 5;
@@ -47,9 +52,10 @@ export const toolDefs = [
     inputSchema: {
       type: 'object',
       properties: {
-        title:       { type: 'string', description: 'Habit name' },
-        description: { type: 'string', description: 'Purpose or notes prompt (e.g. "Note what you practiced")' },
-        recurrence:  { type: 'string', enum: ['daily', 'weekdays', 'weekly', 'monthly'], description: 'How often the habit recurs' },
+        title:            { type: 'string', description: 'Habit name' },
+        description:      { type: 'string', description: 'Purpose or notes prompt (e.g. "Note what you practiced")' },
+        recurrence:       { type: 'string', enum: ['daily', 'weekdays', 'weekly', 'monthly'], description: 'How often the habit recurs' },
+        recurrence_days:  { type: 'string', description: 'Specific days to recur, comma-separated (e.g. "mon,wed,fri" or "tue,thu"). Overrides weekday filtering when set.' },
       },
       required: ['title'],
     },
@@ -85,11 +91,12 @@ export const toolDefs = [
     inputSchema: {
       type: 'object',
       properties: {
-        id:          { type: 'string' },
-        title:       { type: 'string' },
-        description: { type: 'string' },
-        recurrence:  { type: 'string', enum: ['daily', 'weekdays', 'weekly', 'monthly'] },
-        active:      { type: 'boolean', description: 'Set false to archive' },
+        id:               { type: 'string' },
+        title:            { type: 'string' },
+        description:      { type: 'string' },
+        recurrence:       { type: 'string', enum: ['daily', 'weekdays', 'weekly', 'monthly'] },
+        recurrence_days:  { type: 'string', description: 'Specific days to recur, comma-separated (e.g. "mon,wed,fri"). Set to empty string to clear.' },
+        active:           { type: 'boolean', description: 'Set false to archive' },
       },
       required: ['id'],
     },
@@ -108,7 +115,6 @@ export const handlers = {
     for (const l of logs) logMap[`${l.habit_id}:${l.date}`] = l;
 
     return allHabits
-      .filter(h => isHabitDueOn(h, d))
       .map(h => ({
         id:          h.id,
         title:       h.title,
@@ -123,14 +129,14 @@ export const handlers = {
       }));
   },
 
-  create_habit({ title, description, recurrence } = {}) {
+  create_habit({ title, description, recurrence, recurrence_days } = {}) {
     if (!title) return { error: 'title required' };
     const db = openDb();
     const id = uuidv4();
     const now = nowIso();
-    db.prepare('INSERT INTO habits (id, title, description, recurrence, active, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)')
-      .run(id, title.trim(), description ?? null, recurrence ?? 'daily', now, now);
-    return { id, title, recurrence: recurrence ?? 'daily' };
+    db.prepare('INSERT INTO habits (id, title, description, recurrence, recurrence_days, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)')
+      .run(id, title.trim(), description ?? null, recurrence ?? 'daily', recurrence_days ?? null, now, now);
+    return { id, title, recurrence: recurrence ?? 'daily', recurrence_days: recurrence_days ?? null };
   },
 
   log_habit({ habit_id, date, status, notes } = {}) {
@@ -179,14 +185,15 @@ export const handlers = {
     });
   },
 
-  update_habit({ id, title, description, recurrence, active } = {}) {
+  update_habit({ id, title, description, recurrence, recurrence_days, active } = {}) {
     if (!id) return { error: 'id required' };
     const db = openDb();
     const sets = ['updated_at = ?']; const params = [nowIso()];
-    if (title !== undefined)       { sets.push('title = ?');       params.push(title); }
-    if (description !== undefined) { sets.push('description = ?'); params.push(description); }
-    if (recurrence !== undefined)  { sets.push('recurrence = ?');  params.push(recurrence); }
-    if (active !== undefined)      { sets.push('active = ?');      params.push(active ? 1 : 0); }
+    if (title !== undefined)            { sets.push('title = ?');            params.push(title); }
+    if (description !== undefined)      { sets.push('description = ?');      params.push(description); }
+    if (recurrence !== undefined)       { sets.push('recurrence = ?');       params.push(recurrence); }
+    if (recurrence_days !== undefined)  { sets.push('recurrence_days = ?');  params.push(recurrence_days || null); }
+    if (active !== undefined)           { sets.push('active = ?');           params.push(active ? 1 : 0); }
     db.prepare(`UPDATE habits SET ${sets.join(', ')} WHERE id = ?`).run(...params, id);
     return { ok: true };
   },

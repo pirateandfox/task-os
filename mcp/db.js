@@ -237,8 +237,11 @@ export function nextRecurrenceDate(baseDate, recurrence) {
   if (!recurrence) return null;
   try {
     let rruleStr = toRruleString(recurrence);
-    // Anchor to midnight UTC on the day after baseDate — purely date-based, no current time involved.
-    const dtstart = new Date(new Date(baseDate + 'T00:00:00Z').getTime() + 86400000);
+    // Anchor to midnight UTC on baseDate. Use exclusive after() so we always get the
+    // NEXT occurrence strictly after baseDate without shifting the weekday/monthday anchor.
+    // (Using day+1 with inclusive was shifting FREQ=WEEKLY's weekday anchor when baseDate
+    // and the completion day were on different weekdays.)
+    const dtstart = new Date(baseDate + 'T00:00:00Z');
     // FREQ=MONTHLY without BYMONTHDAY would anchor to dtstart's day-of-month, causing 1-day drift
     // on each completion. Fix by explicitly anchoring to baseDate's day-of-month.
     if (rruleStr === 'FREQ=MONTHLY') {
@@ -246,7 +249,7 @@ export function nextRecurrenceDate(baseDate, recurrence) {
       rruleStr = `FREQ=MONTHLY;BYMONTHDAY=${dom}`;
     }
     const rule = rrulestr('RRULE:' + rruleStr, { dtstart });
-    const next = rule.after(dtstart, true); // inclusive: first occurrence on or after dtstart
+    const next = rule.after(dtstart, false); // exclusive: first occurrence strictly after baseDate
     return next ? next.toISOString().slice(0, 10) : null;
   } catch (_) {
     return null;

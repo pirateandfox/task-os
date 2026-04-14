@@ -5,6 +5,7 @@ import { useContexts } from '../lib/ContextsProvider'
 import { api } from '../api'
 import SnoozePopover from './SnoozePopover'
 import PlatformIcon from './PlatformIcon'
+import { detectPlatform } from '../lib/constants'
 import './TaskRow.css'
 
 interface Props {
@@ -184,18 +185,25 @@ export default function TaskRow({ task, showContext = true, draggable = false, s
           </div>
           {allLinks.length > 0 && (
             <div className="task-links">
-              {allLinks.map((url, i) => (
-                <a
-                  key={i}
-                  className="platform-icon-link"
-                  href={url}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={e => e.stopPropagation()}
-                >
-                  <PlatformIcon url={url} size={14} />
-                </a>
-              ))}
+              {allLinks.map((url, i) => {
+                const platform = detectPlatform(url)
+                const label = platform.key === 'link'
+                  ? (() => { try { return new URL(url).hostname.replace(/^www\./, '') } catch { return 'Link' } })()
+                  : platform.label
+                return (
+                  <a
+                    key={i}
+                    className="platform-icon-link"
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <PlatformIcon url={url} size={13} />
+                    <span className="platform-link-label">{label}</span>
+                  </a>
+                )
+              })}
             </div>
           )}
         </div>

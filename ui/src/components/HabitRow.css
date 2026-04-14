@@ -134,3 +134,94 @@
   cursor: pointer;
 }
 .habit-notes-cancel:hover { color: var(--text); }
+
+.habit-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.habit-days-label {
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+/* Edit mode */
+.habit-edit-mode {
+  background: var(--surface2);
+}
+
+.habit-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.habit-edit-input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 7px 10px;
+  font-family: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+.habit-edit-input:focus { outline: none; border-color: var(--accent, #22c55e); }
+
+.habit-edit-recurrence-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.habit-edit-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.habit-edit-save {
+  background: var(--accent, #22c55e);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 14px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.habit-edit-cancel {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.habit-edit-cancel:hover { color: var(--text); }
+.habit-edit-archive {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  margin-left: auto;
+  padding: 5px 0;
+}
+.habit-edit-archive:hover { color: #ef4444; }
+
+.habit-edit-btn {
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.habit-row:hover .habit-edit-btn { opacity: 1; }

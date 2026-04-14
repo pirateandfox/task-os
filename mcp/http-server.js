@@ -65,10 +65,23 @@ async function parseBody(req) {
   });
 }
 
+const REQUEST_TIMEOUT_MS = 30_000; // 30 s — kill hung requests
+
 const httpServer = http.createServer(async (req, res) => {
+  // Abort any request that hasn't completed within the timeout window.
+  const timeout = setTimeout(() => {
+    if (!res.writableEnded) {
+      res.writeHead(504, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32001, message: 'Request timeout' }, id: null }));
+    }
+    req.destroy();
+  }, REQUEST_TIMEOUT_MS);
   res.setHeader('Access-Control-Allow-Origin', 'http://localhost:5173');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, mcp-session-id, last-event-id');
+
+  res.on('finish', () => clearTimeout(timeout));
+  res.on('close',  () => clearTimeout(timeout));
 
   if (req.method === 'OPTIONS') {
     res.writeHead(200);
@@ -132,6 +145,9 @@ const httpServer = http.createServer(async (req, res) => {
     res.end('Method not allowed');
   }
 });
+
+httpServer.keepAliveTimeout = 65_000; // slightly above typical 60 s proxy/LB timeout
+httpServer.headersTimeout   = REQUEST_TIMEOUT_MS + 1_000;
 
 httpServer.listen(PORT, () => {
   console.log(`[mcp-http] listening on port ${PORT}`);

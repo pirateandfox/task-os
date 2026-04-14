@@ -1,3 +1,5 @@
+import flightdeskLogo from '../assets/flightdesk.svg'
+
 interface Props {
   url: string
   size?: number
@@ -67,11 +69,7 @@ export default function PlatformIcon({ url, size = 14 }: Props) {
     )
 
   if (/flightdesk\.dev/.test(url))
-    return (
-      <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 17L12 5l9 12H3z"/>
-      </svg>
-    )
+    return <img src={flightdeskLogo} width={s} height={s} style={{ objectFit: 'contain' }} alt="FlightDesk" />
 
   // fallback: generic link icon
   return (

@@ -539,10 +539,14 @@ export default function DetailPanel({ taskId, onClose, onMutate, onDelete, termi
                       <span className="detail-file-name">{fileName}</span>
                     </button>
                   )
+                  const platform = detectPlatform(l.url)
+                  const chipLabel = l.label ?? (platform.key === 'link'
+                    ? (() => { try { return new URL(l.url).hostname.replace(/^www\./, '') } catch { return 'Link' } })()
+                    : platform.label)
                   return (
-                    <a key={i} className="detail-platform-icon" href={l.url} target="_blank" rel="noreferrer"
-                      title={l.label ?? detectPlatform(l.url).label}>
-                      <PlatformIcon url={l.url} size={16} />
+                    <a key={i} className="detail-platform-icon" href={l.url} target="_blank" rel="noreferrer">
+                      <PlatformIcon url={l.url} size={14} />
+                      <span className="detail-platform-label">{chipLabel}</span>
                     </a>
                   )
                 })}

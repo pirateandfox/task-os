@@ -19,6 +19,7 @@ interface Habit {
   title: string
   description: string | null
   recurrence: string
+  recurrence_days: string | null
   today_log: HabitLog | null
   week: WeekDay[]
 }
@@ -35,6 +36,7 @@ export default function HabitsView({ onMutate }: Props) {
   const [newTitle, setNewTitle] = useState('')
   const [newDesc, setNewDesc] = useState('')
   const [newRecurrence, setNewRecurrence] = useState<'daily' | 'weekdays' | 'weekly' | 'monthly'>('daily')
+  const [newRecurrenceDays, setNewRecurrenceDays] = useState<string[]>([])
 
   const load = useCallback(async () => {
     const data = await (window as any).electronAPI.invoke('habits:list', today)
@@ -47,10 +49,12 @@ export default function HabitsView({ onMutate }: Props) {
   async function createHabit(e: React.FormEvent) {
     e.preventDefault()
     if (!newTitle.trim()) return
-    await (window as any).electronAPI.invoke('habits:create', { title: newTitle.trim(), description: newDesc.trim() || null, recurrence: newRecurrence })
+    const recurrence_days = newRecurrenceDays.length > 0 ? newRecurrenceDays.join(',') : null
+    await (window as any).electronAPI.invoke('habits:create', { title: newTitle.trim(), description: newDesc.trim() || null, recurrence: newRecurrence, recurrence_days })
     setNewTitle('')
     setNewDesc('')
     setNewRecurrence('daily')
+    setNewRecurrenceDays([])
     setCreating(false)
     load()
   }
@@ -89,13 +93,29 @@ export default function HabitsView({ onMutate }: Props) {
             <select
               className="habit-recurrence-select"
               value={newRecurrence}
-              onChange={e => setNewRecurrence(e.target.value as typeof newRecurrence)}
+              onChange={e => { setNewRecurrence(e.target.value as typeof newRecurrence); setNewRecurrenceDays([]) }}
             >
               <option value="daily">Daily</option>
               <option value="weekdays">Weekdays</option>
               <option value="weekly">Weekly</option>
               <option value="monthly">Monthly</option>
             </select>
+            {newRecurrence === 'weekdays' && (
+              <div className="habit-day-picker">
+                {(['mon','tue','wed','thu','fri','sat','sun'] as const).map(day => (
+                  <label key={day} className={`habit-day-chip ${newRecurrenceDays.includes(day) ? 'selected' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={newRecurrenceDays.includes(day)}
+                      onChange={e => setNewRecurrenceDays(prev =>
+                        e.target.checked ? [...prev, day] : prev.filter(d => d !== day)
+                      )}
+                    />
+                    {day.charAt(0).toUpperCase() + day.slice(1, 3)}
+                  </label>
+                ))}
+              </div>
+            )}
             <button type="submit" className="habit-create-submit">Create</button>
             <button type="button" className="habit-create-cancel" onClick={() => setCreating(false)}>Cancel</button>
           </div>

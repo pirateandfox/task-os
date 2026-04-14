@@ -228,19 +228,18 @@
 .detail-platform-icon {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 28px;
+  gap: 5px;
   height: 28px;
+  padding: 0 9px;
   border-radius: 6px;
   border: 1px solid var(--border);
   background: var(--surface);
   text-decoration: none;
   color: var(--muted);
-  font-size: 11px;
-  font-weight: 600;
   transition: border-color .15s;
 }
 .detail-platform-icon:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.detail-platform-label { font-size: 11px; font-weight: 600; line-height: 1; }
 
 .detail-preview-btn {
   display: inline-flex;

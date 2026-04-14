@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import './HabitRow.css'
 
+const DAY_LABELS: Record<string, string> = { mon: 'Mo', tue: 'Tu', wed: 'We', thu: 'Th', fri: 'Fr', sat: 'Sa', sun: 'Su' }
+const ALL_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const
+
 interface HabitLog {
   status: 'done' | 'skipped'
   notes: string | null
@@ -17,6 +20,7 @@ interface Habit {
   title: string
   description: string | null
   recurrence: string
+  recurrence_days: string | null
   today_log: HabitLog | null
   week: WeekDay[]
 }
@@ -41,6 +45,15 @@ export default function HabitRow({ habit, today, onMutate }: Props) {
   const isSkipped = log?.status === 'skipped'
   const [notesOpen, setNotesOpen] = useState(false)
   const [notes, setNotes] = useState(log?.notes ?? '')
+  const [editing, setEditing] = useState(false)
+
+  // Edit state
+  const [editTitle, setEditTitle] = useState(habit.title)
+  const [editDesc, setEditDesc] = useState(habit.description ?? '')
+  const [editRecurrence, setEditRecurrence] = useState(habit.recurrence)
+  const [editDays, setEditDays] = useState<string[]>(
+    habit.recurrence_days ? habit.recurrence_days.split(',') : []
+  )
 
   async function handleDone() {
     if (isDone) {
@@ -68,11 +81,100 @@ export default function HabitRow({ habit, today, onMutate }: Props) {
     onMutate()
   }
 
+  async function saveEdit() {
+    const recurrence_days = editDays.length > 0 ? editDays.join(',') : null
+    await (window as any).electronAPI.invoke('habits:update', {
+      id: habit.id,
+      title: editTitle.trim() || habit.title,
+      description: editDesc.trim() || null,
+      recurrence: editRecurrence,
+      recurrence_days,
+    })
+    setEditing(false)
+    onMutate()
+  }
+
+  async function archiveHabit() {
+    if (!confirm(`Archive "${habit.title}"?`)) return
+    await (window as any).electronAPI.invoke('habits:update', { id: habit.id, active: false })
+    onMutate()
+  }
+
+  function toggleEditDay(day: string) {
+    setEditDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day])
+  }
+
+  if (editing) {
+    return (
+      <div className="habit-row habit-edit-mode">
+        <div className="habit-edit-form">
+          <input
+            className="habit-edit-input"
+            value={editTitle}
+            onChange={e => setEditTitle(e.target.value)}
+            placeholder="Habit name"
+            autoFocus
+          />
+          <input
+            className="habit-edit-input"
+            value={editDesc}
+            onChange={e => setEditDesc(e.target.value)}
+            placeholder="Notes prompt (optional)"
+          />
+          <div className="habit-edit-recurrence-row">
+            <select
+              className="habit-recurrence-select"
+              value={editRecurrence}
+              onChange={e => { setEditRecurrence(e.target.value); setEditDays([]) }}
+            >
+              <option value="daily">Daily</option>
+              <option value="weekdays">Weekdays</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+            {editRecurrence === 'weekdays' && (
+              <div className="habit-day-picker">
+                {ALL_DAYS.map(day => (
+                  <label key={day} className={`habit-day-chip ${editDays.includes(day) ? 'selected' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={editDays.includes(day)}
+                      onChange={() => toggleEditDay(day)}
+                    />
+                    {day.charAt(0).toUpperCase() + day.slice(1, 3)}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="habit-edit-actions">
+            <button className="habit-edit-save" onClick={saveEdit}>Save</button>
+            <button className="habit-edit-cancel" onClick={() => {
+              setEditing(false)
+              setEditTitle(habit.title)
+              setEditDesc(habit.description ?? '')
+              setEditRecurrence(habit.recurrence)
+              setEditDays(habit.recurrence_days ? habit.recurrence_days.split(',') : [])
+            }}>Cancel</button>
+            <button className="habit-edit-archive" onClick={archiveHabit}>Archive</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className={`habit-row ${isDone ? 'done' : ''} ${isSkipped ? 'skipped' : ''}`}>
       <div className="habit-main">
         <div className="habit-title-row">
-          <span className="habit-title">{habit.title}</span>
+          <div className="habit-title-group">
+            <span className="habit-title">{habit.title}</span>
+            {habit.recurrence_days && (
+              <span className="habit-days-label">
+                {habit.recurrence_days.split(',').map(d => DAY_LABELS[d.trim()] ?? d).join(' ')}
+              </span>
+            )}
+          </div>
           <div className="habit-actions">
             <button
               className={`habit-btn habit-done-btn ${isDone ? 'active' : ''}`}
@@ -84,6 +186,11 @@ export default function HabitRow({ habit, today, onMutate }: Props) {
               onClick={handleSkip}
               title={isSkipped ? 'Undo skip' : 'Skip'}
             >–</button>
+            <button
+              className="habit-btn habit-edit-btn"
+              onClick={() => setEditing(true)}
+              title="Edit habit"
+            >✎</button>
           </div>
         </div>
         <div className="habit-bottom-row">
