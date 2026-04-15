@@ -395,7 +395,7 @@ export default function DetailPanel({ taskId, onClose, onMutate, onDelete, termi
                   >
                     <option value="">None</option>
                     {agents
-                      .filter(a => !a.context || a.context === task.context)
+                      .filter(a => (!a.context && !a.project) || (a.context === task.context && (!a.project || a.project === task.project)))
                       .map(a => (
                         <option key={a.path} value={a.path} title={a.description ?? undefined}>
                           {(!a.context && a.folder) ? `${a.folder} / ${a.name}` : a.name}

@@ -133,6 +133,7 @@ async function scanAgents(root, excludeFolders = []) {
         agents.push({
           name: config.name ?? entry.name,
           context: config.context ?? null,
+          project: config.project ?? null,
           description: config.description ?? null,
           command: config.command ?? null,
           path: fullPath,

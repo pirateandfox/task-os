@@ -1,5 +1,17 @@
 # Task OS — Evolution Notes
 
+## Unreleased — Project-scoped agent filtering
+
+### agent.config `project` field
+- `agent.config` now supports a `project` field alongside `context`.
+- Agent picker in the detail panel filters to: global agents (no context, no project) + agents whose context matches the task AND whose project matches the task (or have no project set).
+- This allows multiple repos under one context (e.g. `monroe`) to each have their own coding agents without polluting each other's task views.
+
+### Context + project migration
+- `nestled` context created. All nestled-* repos (`nestled`, `nestled-template`, `nestledjs.com`, `nestledforms.com`, `nestled-forms`) now use `context: nestled` with a per-repo `project` field in their agent.configs and plan agents.
+- `mi-core` agents moved to `context: monroe, project: mi-core`.
+- `tmi-shopify-3.0` agents moved to `context: monroe, project: tmi-shopify-3.0`.
+
 ## 1.0.67 — Link chips, agent output rules, recurrence + view fixes, HTTP timeout (2026-04-14)
 
 ### Link chips with labels
