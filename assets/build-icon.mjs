@@ -1,31 +1,28 @@
 // Run: node assets/build-icon.mjs
 // Requires: npm install sharp (already a devDep)
-// Input: assets/Icon-iOS-Dark-1024x1024@1x.png (or any 1024x1024 PNG)
+// Input: ui/public/favicon.svg (same icon used in the menu bar tray)
 // Output: assets/icon.png + assets/icon.icns + replaces Electron bundle icon
 
 import sharp from 'sharp'
 import { execSync } from 'child_process'
-import { mkdirSync, copyFileSync } from 'fs'
+import { mkdirSync, copyFileSync, readFileSync } from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const src = path.join(__dirname, 'Icon-iOS-Dark-1024x1024@1x.png')
+const src = path.join(__dirname, '../ui/public/favicon.svg')
 const iconPng = path.join(__dirname, 'icon.png')
 const iconicns = path.join(__dirname, 'icon.icns')
-const iconset = '/tmp/taskos.iconset'
+const iconset = '/tmp/qalatra.iconset'
 
-// Add macOS-standard padding (82% artwork, 9% padding each side)
-const artworkSize = Math.round(1024 * 0.82)
-const pad = Math.round((1024 - artworkSize) / 2)
-
-await sharp(src)
-  .resize(artworkSize, artworkSize)
-  .extend({ top: pad, bottom: pad, left: pad, right: pad, background: { r: 0, g: 0, b: 0, alpha: 0 } })
+// Render the SVG at 1024x1024 — same design as the menu bar tray icon
+const svgBuffer = readFileSync(src)
+await sharp(svgBuffer, { density: Math.round(1024 / 64 * 72) })
+  .resize(1024, 1024)
   .png()
   .toFile(iconPng)
 
-console.log(`✓ icon.png (${artworkSize}px artwork, ${pad}px padding)`)
+console.log('✓ icon.png (rendered from favicon.svg at 1024px)')
 
 // Build .icns
 mkdirSync(iconset, { recursive: true })

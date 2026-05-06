@@ -47,6 +47,14 @@ npm run electron-dev        # starts api.js + Vite + Electron all at once
 - Frontend: Vite dev server on port 5173
 - Electron: wraps the Vite frontend
 
+**If the MCP server pings OK but all DB calls fail** (e.g. `Cannot read properties of undefined` or `better-sqlite3` ABI errors), the native module needs to be recompiled for the current Node version:
+
+```bash
+cd ~/IdeaProjects/qalatra && npm rebuild better-sqlite3
+```
+
+This happens when the active Node version changes (e.g. after an asdf switch). The MCP server and Electron app both use `better-sqlite3` and both need it compiled against the same ABI.
+
 ---
 
 ## Database

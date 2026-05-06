@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import type { Task, Subtask } from '../types/task'
 import RecurrencePicker from './RecurrencePicker'
 import PlatformIcon from './PlatformIcon'
-import { api, updateTask, fetchTask, fetchSubtasks, fetchAttachments, fetchAgents, deleteAttachment, queueAgentJob, fetchAgentJobs, fetchNotes, addNote, fetchProjects, type Agent, type AgentJob, type Note } from '../api'
+import { api, updateTask, fetchTask, fetchSubtasks, fetchAttachments, fetchAgents, deleteAttachment, queueAgentJob, fetchAgentJobs, fetchNotes, addNote, fetchProjects, createProjectExplicit, type Agent, type AgentJob, type Note } from '../api'
 import type { Attachment } from '../types/task'
 import { PRIORITY_COLORS } from '../lib/constants'
 import { useContexts } from '../lib/ContextsProvider'
@@ -64,6 +64,9 @@ import { detectPlatform } from '../lib/constants'
 const ENERGY_OPTIONS = ['high', 'medium', 'low', 'async'] as const
 const ENERGY_LABELS: Record<string, string> = { high: '🔥 High', medium: '⚡ Med', low: '🌿 Low', async: '📬 Async' }
 
+const SPECIAL_TYPES = ['coding', 'reading'] as const
+const SPECIAL_TYPE_LABELS: Record<string, string> = { coding: '⌨ Coding', reading: '📖 Reading' }
+
 export default function DetailPanel({ taskId, onClose, onMutate, onDelete, terminalOpen, onPreview }: Props) {
   const { contexts, getColor } = useContexts()
   const [task, setTask]       = useState<Task | null>(null)
@@ -85,12 +88,12 @@ export default function DetailPanel({ taskId, onClose, onMutate, onDelete, termi
   const [projects, setProjects] = useState<string[]>([])
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [uploading, setUploading] = useState(false)
-  const [editingProject, setEditingProject] = useState(false)
+  const [creatingProject, setCreatingProject] = useState(false)
+  const [newProjectName, setNewProjectName] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [projectInput, setProjectInput] = useState('')
   const titleRef = useRef<HTMLDivElement>(null)
   const linkInputRef = useRef<HTMLInputElement>(null)
-  const projectInputRef = useRef<HTMLInputElement>(null)
+  const newProjectInputRef = useRef<HTMLInputElement>(null)
 
   async function patch(fields: Record<string, unknown>) {
     if (!task) return
@@ -114,8 +117,13 @@ export default function DetailPanel({ taskId, onClose, onMutate, onDelete, termi
     }
   }, [taskId])
 
+  useEffect(() => {
+    if (creatingProject) newProjectInputRef.current?.focus()
+  }, [creatingProject])
+
   const load = useCallback(async (id: string) => {
     setLoading(true)
+    setLatestJob(null)
     try {
       const [t, s, atts, notesList] = await Promise.all([
         fetchTask(id),
@@ -128,12 +136,9 @@ export default function DetailPanel({ taskId, onClose, onMutate, onDelete, termi
       setAttachments(atts)
       setNotes(notesList)
       setDescription(t.description ?? '')
-      setProjectInput(t.project ?? '')
       setDescDirty(false)
       if (t.agent_path) {
         fetchAgentJobs(id).then(jobs => setLatestJob(jobs[0] ?? null))
-      } else {
-        setLatestJob(null)
       }
     } catch (_) {
       // backend unreachable — panel will just be empty
@@ -176,10 +181,6 @@ export default function DetailPanel({ taskId, onClose, onMutate, onDelete, termi
   useEffect(() => {
     if (addingLink) linkInputRef.current?.focus()
   }, [addingLink])
-
-  useEffect(() => {
-    if (editingProject) projectInputRef.current?.focus()
-  }, [editingProject])
 
   async function saveTitle() {
     if (!task) return
@@ -356,29 +357,68 @@ export default function DetailPanel({ taskId, onClose, onMutate, onDelete, termi
               </div>
             </div>
 
-            {/* Project + Due date row */}
+            {/* Type */}
+            {task.task_type !== 'event' && task.task_type !== 'reminder' && (
+              <div className="detail-field-row">
+                <span className="detail-field-label">Type</span>
+                <div className="detail-pill-group">
+                  {SPECIAL_TYPES.map(t => (
+                    <button
+                      key={t}
+                      className={`detail-pill ${task.task_type === t ? 'active' : ''}`}
+                      onClick={() => patch({ task_type: task.task_type === t ? 'task' : t })}
+                    >{SPECIAL_TYPE_LABELS[t]}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Project */}
             <div className="detail-field-row">
               <span className="detail-field-label">Project</span>
-              {editingProject ? (
-                <>
+              {creatingProject ? (
+                <div style={{ display: 'flex', gap: 4, flex: 1 }}>
                   <input
-                    ref={projectInputRef}
+                    ref={newProjectInputRef}
                     className="detail-inline-input"
-                    list="detail-project-list"
-                    value={projectInput}
-                    onChange={e => setProjectInput(e.target.value)}
-                    onBlur={() => { patch({ project: projectInput || null }); setEditingProject(false) }}
-                    onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') { patch({ project: projectInput || null }); setEditingProject(false) } }}
-                    placeholder="Project name…"
+                    value={newProjectName}
+                    onChange={e => setNewProjectName(e.target.value)}
+                    placeholder="New project name…"
+                    onKeyDown={async e => {
+                      if (e.key === 'Enter' && newProjectName.trim()) {
+                        const name = newProjectName.trim()
+                        await createProjectExplicit(name)
+                        await patch({ project: name })
+                        setProjects(ps => [...ps, name].sort((a, b) => a.localeCompare(b)))
+                        setCreatingProject(false)
+                        setNewProjectName('')
+                      }
+                      if (e.key === 'Escape') { setCreatingProject(false); setNewProjectName('') }
+                    }}
                   />
-                  <datalist id="detail-project-list">
-                    {projects.map(p => <option key={p} value={p} />)}
-                  </datalist>
-                </>
+                  <button
+                    style={{ fontSize: 11, padding: '2px 6px', background: 'transparent', border: '1px solid var(--border)', color: 'var(--muted)', borderRadius: 4, cursor: 'pointer' }}
+                    onClick={() => { setCreatingProject(false); setNewProjectName('') }}
+                  >✕</button>
+                </div>
               ) : (
-                <span className="detail-inline-value" onClick={() => setEditingProject(true)}>
-                  {task.project || <span style={{ color: 'var(--muted)' }}>None</span>}
-                </span>
+                <select
+                  className="detail-select"
+                  style={{ flex: 1 }}
+                  value={task.project ?? ''}
+                  onChange={e => {
+                    if (e.target.value === '__new__') {
+                      setNewProjectName('')
+                      setCreatingProject(true)
+                      return
+                    }
+                    patch({ project: e.target.value || null })
+                  }}
+                >
+                  <option value="">None</option>
+                  {projects.map(p => <option key={p} value={p}>{p}</option>)}
+                  <option value="__new__">+ Create new project…</option>
+                </select>
               )}
             </div>
 
@@ -402,7 +442,7 @@ export default function DetailPanel({ taskId, onClose, onMutate, onDelete, termi
                         </option>
                       ))}
                   </select>
-                  {task.agent_path && (!latestJob?.session_id || !task.agent_resume) && (
+                  {task.agent_path && (
                     <button
                       className="detail-run-btn"
                       onClick={() => runAgent()}

@@ -92,7 +92,8 @@ function PriorityView({ data, selectedId, onSelect, onMeetingOpen, onMutate }: O
   // Scheduled = autorun tasks that haven't fired yet (no agent job)
   const scheduledTasks = allRaw.filter(t => t.agent_autorun === 1 && !t.agent_job_status)
   const scheduledIds = new Set(scheduledTasks.map(t => t.id))
-  const allTasks = allRaw.filter(t => !scheduledIds.has(t.id))
+  // Coding tasks live in the Code view, not Priority
+  const allTasks = allRaw.filter(t => !scheduledIds.has(t.id) && t.task_type !== 'coding')
 
   async function clearInbox(id: string) {
     await api.clearInbox(id)

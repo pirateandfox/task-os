@@ -14,7 +14,7 @@ export interface Task {
   surface_after: string | null
   my_priority: number | null
   energy_required: 'high' | 'medium' | 'low' | 'async' | null
-  task_type: 'task' | 'event' | 'reminder'
+  task_type: 'task' | 'event' | 'reminder' | 'coding' | 'reading'
   event_time: string | null
   recurrence: string | null
   links: string // JSON array string

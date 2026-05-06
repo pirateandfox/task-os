@@ -148,6 +148,7 @@ function initSchema(db) {
   if (!existingCols.includes('agent_autorun_time')) db.exec("ALTER TABLE tasks ADD COLUMN agent_autorun_time TEXT DEFAULT '09:00'");
   if (!existingCols.includes('description'))        db.exec('ALTER TABLE tasks ADD COLUMN description TEXT');
   if (!existingCols.includes('inbox'))              db.exec('ALTER TABLE tasks ADD COLUMN inbox INTEGER NOT NULL DEFAULT 0');
+  if (!existingCols.includes('assigned_agent'))     db.exec('ALTER TABLE tasks ADD COLUMN assigned_agent TEXT');
 
   // Migrations for contexts table columns added after initial schema
   const contextCols = db.prepare(`PRAGMA table_info(contexts)`).all().map(r => r.name);
@@ -176,15 +177,15 @@ function initSchema(db) {
   }
 }
 
-export function openDb() {
+export function openDb({ busyTimeout = 1000 } = {}) {
   const dir = path.dirname(DB_PATH);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
   const db = new Database(DB_PATH);
-  // Set busy_timeout BEFORE journal_mode and initSchema so both the API and MCP
-  // processes can wait on each other's write locks during simultaneous startup
-  // instead of failing immediately with SQLITE_BUSY.
-  db.pragma('busy_timeout = 5000');
+  // Keep busy_timeout short in the MCP server (default 1000ms) so SQLITE_BUSY surfaces
+  // quickly and the HTTP retry loop has room to retry within the 5s Axios timeout window.
+  // The db-worker passes 5000ms for startup where longer waits are acceptable.
+  db.pragma(`busy_timeout = ${busyTimeout}`);
   db.pragma('journal_mode = WAL');
   initSchema(db);
   return db;

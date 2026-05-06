@@ -14,6 +14,7 @@ import { toolDefs as syncDefs,     handlers as syncHandlers }     from './tools/
 import { toolDefs as notesDefs,    handlers as notesHandlers }    from './tools/notes.js';
 import { toolDefs as agentDefs,    handlers as agentHandlers }    from './tools/agent.js';
 import { toolDefs as habitDefs,    handlers as habitHandlers }    from './tools/habits.js';
+import { toolDefs as healthDefs,   handlers as healthHandlers }   from './tools/health.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SETTINGS_FILE = process.env.TASKOS_SETTINGS_FILE
@@ -23,8 +24,8 @@ function loadSettings() {
   try { return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')); } catch { return {}; }
 }
 
-const allDefs     = [...taskDefs, ...triageDefs, ...briefingDefs, ...syncDefs, ...notesDefs, ...agentDefs, ...habitDefs];
-const allHandlers = { ...taskHandlers, ...triageHandlers, ...briefingHandlers, ...syncHandlers, ...notesHandlers, ...agentHandlers, ...habitHandlers };
+const allDefs     = [...taskDefs, ...triageDefs, ...briefingDefs, ...syncDefs, ...notesDefs, ...agentDefs, ...habitDefs, ...healthDefs];
+const allHandlers = { ...taskHandlers, ...triageHandlers, ...briefingHandlers, ...syncHandlers, ...notesHandlers, ...agentHandlers, ...habitHandlers, ...healthHandlers };
 
 function createMcpServer() {
   const server = new Server(
@@ -40,12 +41,24 @@ function createMcpServer() {
     if (!handler) {
       return { content: [{ type: 'text', text: JSON.stringify({ error: `Unknown tool: ${name}` }) }], isError: true };
     }
-    try {
-      const result = handler(args ?? {});
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
-    } catch (err) {
-      return { content: [{ type: 'text', text: JSON.stringify({ error: err.message }) }], isError: true };
+    // Retry on SQLITE_BUSY — multiple concurrent agents can cause write-lock contention.
+    // Each retry waits longer; total max wait ~3.5s, well inside the 5s Axios timeout.
+    const delays = [200, 500, 1000, 1800];
+    let lastErr;
+    for (let attempt = 0; attempt <= delays.length; attempt++) {
+      try {
+        const result = handler(args ?? {});
+        return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      } catch (err) {
+        if (err.code === 'SQLITE_BUSY' && attempt < delays.length) {
+          lastErr = err;
+          await new Promise(r => setTimeout(r, delays[attempt]));
+          continue;
+        }
+        return { content: [{ type: 'text', text: JSON.stringify({ error: err.message }) }], isError: true };
+      }
     }
+    return { content: [{ type: 'text', text: JSON.stringify({ error: `DB busy after retries: ${lastErr.message}` }) }], isError: true };
   });
 
   return server;
@@ -155,11 +168,12 @@ httpServer.listen(PORT, () => {
 
 httpServer.on('error', err => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`[mcp-http] Port ${PORT} already in use`);
+    console.error(`[mcp-http] Port ${PORT} in use, retrying in 30s…`);
+    setTimeout(() => httpServer.listen(PORT), 30_000);
   } else {
-    console.error('[mcp-http] error:', err);
+    console.error('[mcp-http] server error:', err);
+    process.exit(1);
   }
-  process.exit(1);
 });
 
 process.on('SIGTERM', async () => {

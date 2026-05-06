@@ -47,6 +47,14 @@ export async function fetchBacklog(): Promise<Task[]> {
   return ipc('task:backlog')
 }
 
+export async function fetchCodingTasks(): Promise<Task[]> {
+  return ipc('tasks:coding')
+}
+
+export async function fetchReadingTasks(): Promise<Task[]> {
+  return ipc('tasks:reading')
+}
+
 export async function fetchDailyNote(date: string): Promise<{ date: string; content: string }> {
   return ipc('daily-note:get', date)
 }
@@ -84,8 +92,70 @@ export interface Project {
   created_at: string
 }
 
+export interface ProjectSummary {
+  name: string
+  context: string | null
+  isRepo: boolean
+  activeCount: number
+  codingCount: number
+  backlogCount: number
+  agentCount: number
+}
+
+export interface AgentRecord {
+  path: string
+  name: string
+  context: string | null
+  project: string | null
+  description: string | null
+  command: string | null
+  coding: number
+  relative_path: string | null
+  folder: string | null
+  last_seen: string
+}
+
+export interface ProjectDetail {
+  name: string
+  context: string | null
+  isRepo: boolean
+  active: Task[]
+  coding: Task[]
+  backlog: Task[]
+  doneRecent: Task[]
+  agents: AgentRecord[]
+}
+
 export async function fetchProjects(includeArchived = false): Promise<Project[]> {
   return ipc('projects:list', includeArchived)
+}
+
+export async function fetchProjectSummaries(): Promise<ProjectSummary[]> {
+  return ipc('projects:summaries')
+}
+
+export async function fetchProjectDetail(name: string): Promise<ProjectDetail> {
+  return ipc('project:detail', name)
+}
+
+export async function createProjectExplicit(name: string): Promise<void> {
+  await ipc('project:create', name)
+}
+
+export async function updateProject(name: string, fields: { is_repo?: number; archived?: number }): Promise<void> {
+  await ipc('project:update', name, fields)
+}
+
+export async function rescanAgents(): Promise<void> {
+  await ipc('agents:rescan')
+}
+
+export async function renameProject(oldName: string, newName: string): Promise<{ ok: boolean; merged: boolean }> {
+  return ipc('project:rename', oldName, newName)
+}
+
+export async function setProjectContext(name: string, context: string): Promise<void> {
+  await ipc('project:set-context', name, context)
 }
 
 export async function archiveProject(name: string): Promise<void> {
@@ -106,6 +176,7 @@ export interface Agent {
   project: string | null
   description: string | null
   command: string | null
+  coding: boolean
   path: string
   relativePath: string
   folder: string | null   // top-level project folder name (null for agents at the scan root)

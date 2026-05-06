@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.qalatra.mcp</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/justinhandley/.asdf/installs/nodejs/22.14.0/bin/node</string>
+        <string>/Users/justinhandley/IdeaProjects/qalatra/mcp/http-server-entry.cjs</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>TASKOS_DB_DIR</key>
+        <string>/Users/justinhandley/IdeaProjects/qalatra/db</string>
+        <key>TASKOS_SETTINGS_FILE</key>
+        <string>/Users/justinhandley/IdeaProjects/qalatra/db/settings.json</string>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/justinhandley/IdeaProjects/qalatra</string>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/justinhandley/Library/Logs/qalatra-mcp.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/justinhandley/Library/Logs/qalatra-mcp.log</string>
+</dict>
+</plist>

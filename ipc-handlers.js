@@ -136,6 +136,7 @@ async function scanAgents(root, excludeFolders = []) {
           project: config.project ?? null,
           description: config.description ?? null,
           command: config.command ?? null,
+          coding: config.coding === true,
           path: fullPath,
           relativePath: path.relative(root, fullPath),
           folder,
@@ -176,6 +177,9 @@ async function processAgentJobs() {
       cfg = JSON.parse(fs.readFileSync(path.join(job.agent_path, 'agent.config'), 'utf8'))
       if (cfg.command) agentCommand = cfg.command
     } catch {}
+    if (cfg?.coding && job.task_id) {
+      await dbCall('updateTask', job.task_id, { task_type: 'coding' })
+    }
     const isTemplateCommand = agentCommand.includes('{spec_file}') || agentCommand.includes('{description}')
     const shellBin = process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash')
 
@@ -258,7 +262,10 @@ async function processAgentJobs() {
       else if (status === 'failed' && stderr.trim()) result += `\n\nStderr:\n${stderr.trim()}`
       await dbCall('finishAgentJob', job.id, status, result, sessionId)
       if (status === 'done' && job.task_id) await dbCall('insertAgentNote', uuidv4(), job.task_id, result, job.id)
-      // Apply output_rules from agent.config — e.g. extract a task ID from stdout and add a link
+      // Apply output_rules from agent.config.
+      // Supported actions:
+      //   add_link:  { action, pattern, url }          — regex match → construct URL → attach to task
+      //   set_field: { action, pattern, field, group }  — regex match → write capture group to task field
       if (status === 'done' && job.task_id) {
         const rules = cfg?.output_rules ?? []
         for (const rule of rules) {
@@ -268,6 +275,12 @@ async function processAgentJobs() {
               if (match) {
                 const url = rule.url.replace(/\{(\d+)\}/g, (_, i) => match[parseInt(i)] ?? '')
                 if (url) await dbCall('addTaskLink', job.task_id, url)
+              }
+            } else if (rule.action === 'set_field' && rule.pattern && rule.field) {
+              const match = stdout.match(new RegExp(rule.pattern))
+              if (match) {
+                const value = match[rule.group ?? 1] ?? match[0]
+                if (value) await dbCall('updateTask', job.task_id, { [rule.field]: value })
               }
             }
           } catch {}
@@ -293,9 +306,17 @@ async function autoRunAgents() {
 
 // ── Background workers ────────────────────────────────────────────────────────
 
+async function runAgentScan() {
+  const settings = loadSettings()
+  const excludeFolders = (settings.agentExcludeFolders ?? '').split(',').map(f => f.trim()).filter(Boolean)
+  const agents = await scanAgents(settings.agentsRoot || settings.terminalCwd || process.env.HOME, excludeFolders)
+  if (agents.length) await dbCall('upsertAgents', agents).catch(() => {})
+}
+
 export function startBackgroundWorkers() {
   dbCall('resetStuckJobs').catch(() => {})
   syncPendingAttachments().catch(() => {})
+  runAgentScan().catch(() => {})
   setInterval(() => syncPendingAttachments().catch(() => {}), 5 * 60 * 1000)
   setInterval(() => processAgentJobs().catch(() => {}), 30_000)
   setInterval(() => autoRunAgents().catch(() => {}), 5 * 60_000)
@@ -312,6 +333,8 @@ export function setupIpcHandlers(onMcpPortChange) {
   ipcMain.handle('task:get', (_, id) => dbCall('getTask', id).then(t => { if (!t) throw new Error('Task not found'); return t }))
   ipcMain.handle('task:subtasks', (_, id) => dbCall('getSubtasks', id))
   ipcMain.handle('task:backlog', () => dbCall('getBacklog'))
+  ipcMain.handle('tasks:coding', () => dbCall('getCodingTasks'))
+  ipcMain.handle('tasks:reading', () => dbCall('getReadingTasks'))
   ipcMain.handle('task:create', (_, body) => dbCall('createTask', body))
   ipcMain.handle('task:update', (_, id, body) => dbCall('updateTask', id, body))
   ipcMain.handle('task:delete', (_, id) => dbCall('deleteTask', id))
@@ -345,6 +368,11 @@ export function setupIpcHandlers(onMcpPortChange) {
 
   // Projects
   ipcMain.handle('projects:list', (_, includeArchived) => dbCall('listProjects', includeArchived))
+  ipcMain.handle('projects:summaries', () => dbCall('getProjectSummaries'))
+  ipcMain.handle('project:detail', (_, name) => dbCall('getProjectDetail', name))
+  ipcMain.handle('project:create', (_, name) => dbCall('createProjectExplicit', name))
+  ipcMain.handle('project:rename', (_, oldName, newName) => dbCall('renameProject', oldName, newName))
+  ipcMain.handle('project:set-context', (_, name, context) => dbCall('setProjectContext', name, context))
   ipcMain.handle('projects:archive', (_, name) => dbCall('archiveProject', name))
   ipcMain.handle('projects:unarchive', (_, name) => dbCall('unarchiveProject', name))
   ipcMain.handle('projects:delete', (_, name) => dbCall('deleteProject', name))
@@ -409,11 +437,17 @@ export function setupIpcHandlers(onMcpPortChange) {
   })
 
   // Agents
-  ipcMain.handle('agents:list', () => {
-    const settings = loadSettings()
-    const excludeFolders = (settings.agentExcludeFolders ?? '').split(',').map(f => f.trim()).filter(Boolean)
-    return scanAgents(settings.agentsRoot || settings.terminalCwd || process.env.HOME, excludeFolders)
+  ipcMain.handle('agents:list', async () => {
+    const agents = await runAgentScan().then(() => {
+      const settings = loadSettings()
+      const excludeFolders = (settings.agentExcludeFolders ?? '').split(',').map(f => f.trim()).filter(Boolean)
+      return scanAgents(settings.agentsRoot || settings.terminalCwd || process.env.HOME, excludeFolders)
+    }).catch(() => [])
+    return agents
   })
+  ipcMain.handle('agents:rescan', async () => { await runAgentScan(); return { ok: true } })
+  ipcMain.handle('agents:list-db', (_, filter) => dbCall('listAgentsDb', filter ?? {}))
+  ipcMain.handle('project:update', (_, name, fields) => dbCall('updateProject', name, fields))
   ipcMain.handle('agent-jobs:list', (_, taskId) => dbCall('listAgentJobs', taskId))
   ipcMain.handle('agent-jobs:get', (_, id) => dbCall('getAgentJob', id))
   ipcMain.handle('agent-jobs:create', (_, taskId, userMessage) => dbCall('createAgentJob', taskId, userMessage))

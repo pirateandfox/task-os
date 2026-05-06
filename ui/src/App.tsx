@@ -1,11 +1,15 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { fetchTasks, fetchSettings, type TaskData } from './api'
 import { today as todayStr } from './lib/constants'
 import { ContextsProvider } from './lib/ContextsProvider'
 import { ThemeProvider, useTheme } from './lib/ThemeProvider'
+import Sidebar, { type NavSection } from './components/Sidebar'
 import Header from './components/Header'
 import TaskList from './components/TaskList'
 import BacklogView from './components/BacklogView'
+import CodeAgentsView from './components/CodeAgentsView'
+import ReadingView from './components/ReadingView'
+import ProjectDashboardView from './components/ProjectDashboardView'
 import DailyNote from './components/DailyNote'
 import DetailPanel from './components/DetailPanel'
 import Terminal from './components/Terminal'
@@ -28,8 +32,7 @@ export default function App() {
 function AppInner() {
   const { mode, setMode } = useTheme()
   const [date, setDate]             = useState(todayStr())
-  const [view, setView]             = useState<'priority' | 'project'>('priority')
-  const [screen, setScreen]         = useState<'main' | 'backlog' | 'habits'>('main')
+  const [nav, setNav]               = useState<NavSection>('priority')
   const [backlogRefresh, setBacklogRefresh] = useState(0)
   const [taskData, setTaskData]     = useState<TaskData | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -65,13 +68,21 @@ function AppInner() {
   useEffect(() => { load(date) }, [date, load])
 
   // Background poll — 30s normally, 5s while agent jobs are running
-  // Uses silent=true so TaskList stays mounted and scroll position is preserved
   useEffect(() => {
     const allTasks = Object.values(taskData ?? {}).flat().filter(t => t && typeof t === 'object' && 'id' in t) as { agent_job_status?: string }[]
     const hasActive = allTasks.some(t => t.agent_job_status === 'queued' || t.agent_job_status === 'running')
     const interval = setInterval(() => load(date, true), hasActive ? 5000 : 30_000)
     return () => clearInterval(interval)
   }, [taskData, date, load])
+
+  // Active agent count for sidebar badge (from today's taskData)
+  const activeAgentCount = useMemo(() => {
+    return Object.values(taskData ?? {})
+      .flat()
+      .filter(t => t && typeof t === 'object' && 'agent_job_status' in t)
+      .filter((t: any) => t.agent_job_status === 'queued' || t.agent_job_status === 'running')
+      .length
+  }, [taskData])
 
   // File > Open File… from native menu
   useEffect(() => {
@@ -104,7 +115,7 @@ function AppInner() {
         setCreateOpen(true)
       }
       if (e.key === 'r' && !e.metaKey && !e.ctrlKey && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement) && !(e.target as HTMLElement).isContentEditable) {
-        screen === 'main' ? load(date) : setBacklogRefresh(n => n + 1)
+        nav === 'backlog' ? setBacklogRefresh(n => n + 1) : load(date)
       }
       if (e.key === 'Escape') {
         if (createOpen) { setCreateOpen(false); return }
@@ -114,7 +125,7 @@ function AppInner() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [selectedId, meetingId, createOpen])
+  }, [selectedId, meetingId, createOpen, nav, date, load])
 
   if (meetingId) {
     return (
@@ -126,83 +137,106 @@ function AppInner() {
 
   return (
     <ContextsProvider>
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      <Header
-        date={date}
-        view={view}
-        screen={screen}
-        onDateChange={d => { setDate(d); setSelectedId(null) }}
-        onViewChange={setView}
-        onScreenChange={s => { setScreen(s); setSelectedId(null) }}
-        onTerminalToggle={() => setTerminalMode(m => m === 'closed' ? 'docked' : 'closed')}
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+      <Sidebar
+        nav={nav}
+        onNavChange={n => { setNav(n); setSelectedId(null) }}
+        activeAgentCount={activeAgentCount}
+        onNewTask={() => setCreateOpen(true)}
         dailyNoteOpen={dailyNoteOpen}
         onDailyNoteToggle={() => setDailyNoteOpen(o => !o)}
         settingsOpen={settingsOpen}
         onSettingsToggle={() => setSettingsOpen(o => !o)}
-        onNewTask={() => setCreateOpen(true)}
-        onRefresh={() => screen === 'main' ? load(date) : setBacklogRefresh(n => n + 1)}
         themeMode={mode}
         onThemeModeChange={setMode}
       />
 
-      <div className={`layout ${selectedId ? 'panel-open' : ''}`} style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-        <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
-          {screen === 'habits' ? (
-            <HabitsView onMutate={() => load(date, true)} />
-          ) : screen === 'backlog' ? (
-            <BacklogView
-              refreshToken={backlogRefresh}
-              selectedId={selectedId}
-              onSelect={id => setSelectedId(id)}
-              onMutate={() => setBacklogRefresh(n => n + 1)}
-            />
-          ) : (
-            <>
-              {loading && <div style={{ color: 'var(--muted)', padding: '40px', textAlign: 'center' }}>Loading…</div>}
-              {!loading && apiError && (
-                <div style={{ padding: '40px', color: '#e55', fontFamily: 'monospace', fontSize: 13 }}>
-                  <div style={{ marginBottom: 8, fontWeight: 600 }}>Could not load tasks</div>
-                  <div style={{ marginBottom: 12, opacity: 0.8 }}>Error: {apiError}</div>
-                  <button onClick={() => load(date)} style={{ padding: '6px 14px', cursor: 'pointer' }}>Retry</button>
-                </div>
-              )}
-              {!loading && !apiError && taskData && (
-                <TaskList
-                  data={taskData}
-                  view={view}
-                  selectedId={selectedId}
-                  onSelect={id => setSelectedId(id)}
-                  onMeetingOpen={id => setMeetingId(id)}
-                  onMutate={() => load(date, true)}
-                />
-              )}
-            </>
-          )}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+        <Header
+          date={date}
+          nav={nav}
+          onDateChange={d => { setDate(d); setSelectedId(null) }}
+          onTerminalToggle={() => setTerminalMode(m => m === 'closed' ? 'docked' : 'closed')}
+          onRefresh={() => nav === 'backlog' ? setBacklogRefresh(n => n + 1) : load(date)}
+        />
+
+        <div className={`layout ${selectedId ? 'panel-open' : ''}`} style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
+            {nav === 'habits' ? (
+              <HabitsView onMutate={() => load(date, true)} />
+            ) : nav === 'backlog' ? (
+              <BacklogView
+                refreshToken={backlogRefresh}
+                selectedId={selectedId}
+                onSelect={id => setSelectedId(id)}
+                onMutate={() => setBacklogRefresh(n => n + 1)}
+              />
+            ) : nav === 'code' ? (
+              <CodeAgentsView
+                selectedId={selectedId}
+                onSelect={id => setSelectedId(id)}
+                onMutate={() => load(date, true)}
+              />
+            ) : nav === 'reading' ? (
+              <ReadingView
+                selectedId={selectedId}
+                onSelect={id => setSelectedId(id)}
+                onMutate={() => load(date, true)}
+              />
+            ) : nav === 'project' ? (
+              <ProjectDashboardView
+                selectedId={selectedId}
+                onSelect={id => setSelectedId(id)}
+                onMutate={() => load(date, true)}
+              />
+            ) : (
+              <>
+                {loading && <div style={{ color: 'var(--muted)', padding: '40px', textAlign: 'center' }}>Loading…</div>}
+                {!loading && apiError && (
+                  <div style={{ padding: '40px', color: '#e55', fontFamily: 'monospace', fontSize: 13 }}>
+                    <div style={{ marginBottom: 8, fontWeight: 600 }}>Could not load tasks</div>
+                    <div style={{ marginBottom: 12, opacity: 0.8 }}>Error: {apiError}</div>
+                    <button onClick={() => load(date)} style={{ padding: '6px 14px', cursor: 'pointer' }}>Retry</button>
+                  </div>
+                )}
+                {!loading && !apiError && taskData && (
+                  <TaskList
+                    data={taskData}
+                    view="priority"
+                    selectedId={selectedId}
+                    onSelect={id => setSelectedId(id)}
+                    onMeetingOpen={id => setMeetingId(id)}
+                    onMutate={() => load(date, true)}
+                  />
+                )}
+              </>
+            )}
+          </div>
+
+          <DetailPanel
+            taskId={selectedId}
+            onClose={() => setSelectedId(null)}
+            onMutate={() => nav === 'backlog' ? setBacklogRefresh(n => n + 1) : load(date, true)}
+            onDelete={() => { setSelectedId(null); nav === 'backlog' ? setBacklogRefresh(n => n + 1) : load(date, true) }}
+            terminalOpen={terminalMode !== 'closed'}
+            onPreview={path => path.endsWith('.md') ? setMdPath(path) : setPreviewPath(path)}
+          />
         </div>
 
-        <DetailPanel
-          taskId={selectedId}
-          onClose={() => setSelectedId(null)}
-          onMutate={() => screen === 'main' ? load(date, true) : setBacklogRefresh(n => n + 1)}
-          onDelete={() => { setSelectedId(null); screen === 'main' ? load(date, true) : setBacklogRefresh(n => n + 1) }}
-          terminalOpen={terminalMode !== 'closed'}
-          onPreview={path => path.endsWith('.md') ? setMdPath(path) : setPreviewPath(path)}
+        <Terminal
+          mode={terminalMode}
+          onClose={() => setTerminalMode('closed')}
+          onToggleFullscreen={() => setTerminalMode(m => m === 'fullscreen' ? 'docked' : 'fullscreen')}
+          pendingCommand={terminalCommand}
+          onCommandConsumed={() => setTerminalCommand(null)}
         />
       </div>
-
-      <Terminal
-        mode={terminalMode}
-        onClose={() => setTerminalMode('closed')}
-        onToggleFullscreen={() => setTerminalMode(m => m === 'fullscreen' ? 'docked' : 'fullscreen')}
-        pendingCommand={terminalCommand}
-        onCommandConsumed={() => setTerminalCommand(null)}
-      />
 
       <CreateTask
         open={createOpen}
         defaultDate={date}
         onClose={() => setCreateOpen(false)}
-        onCreated={id => { screen === 'main' ? load(date) : setBacklogRefresh(n => n + 1); setSelectedId(id) }}
+        onCreated={id => { load(date); setSelectedId(id) }}
       />
       <Settings
         open={settingsOpen}
@@ -283,7 +317,7 @@ function UpdateBanner({ status, onDismiss }: { status: { status: string; version
     <div style={{
       position: 'fixed',
       bottom: 0,
-      left: 0,
+      left: 160,
       right: 0,
       height: 32,
       background: bg[s] ?? 'var(--surface2)',

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { api, fetchAgents, type Agent } from '../api'
+import { api, fetchAgents, fetchProjectSummaries, type Agent, type ProjectSummary } from '../api'
 import { PRIORITY_COLORS } from '../lib/constants'
 import { useContexts } from '../lib/ContextsProvider'
 import './CreateTask.css'
@@ -20,13 +20,19 @@ export default function CreateTask({ open, defaultDate, onClose, onCreated }: Pr
   const [project, setProject] = useState('')
   const [agentPath, setAgentPath] = useState('')
   const [agents, setAgents] = useState<Agent[]>([])
+  const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [saving, setSaving] = useState(false)
   const titleRef = useRef<HTMLInputElement>(null)
 
-  // Only fetch agents when the modal actually opens — not on mount.
+  // Only fetch agents/projects when the modal actually opens — not on mount.
   // Fetching on mount triggers scanAgents() which walks the home directory
   // on startup, causing macOS TCC to prompt for every protected folder.
-  useEffect(() => { if (open) fetchAgents().then(setAgents) }, [open])
+  useEffect(() => {
+    if (open) {
+      fetchAgents().then(setAgents)
+      fetchProjectSummaries().then(setProjects)
+    }
+  }, [open])
 
   useEffect(() => {
     if (open) {
@@ -39,6 +45,23 @@ export default function CreateTask({ open, defaultDate, onClose, onCreated }: Pr
       setTimeout(() => titleRef.current?.focus(), 50)
     }
   }, [open, defaultDate])
+
+  function handleContextChange(newContext: string) {
+    setContext(newContext)
+    setProject('')
+    setAgentPath('')
+  }
+
+  function handleProjectChange(newProject: string) {
+    setProject(newProject)
+    // Clear agent if it no longer matches the new project filter
+    if (agentPath) {
+      const agent = agents.find(a => a.path === agentPath)
+      if (agent && agent.project && newProject.trim() && agent.project !== newProject.trim()) {
+        setAgentPath('')
+      }
+    }
+  }
 
   async function handleSubmit(e?: React.FormEvent) {
     e?.preventDefault()
@@ -88,7 +111,7 @@ export default function CreateTask({ open, defaultDate, onClose, onCreated }: Pr
             <select
               className="ct-select"
               value={context}
-              onChange={e => setContext(e.target.value)}
+              onChange={e => handleContextChange(e.target.value)}
               style={{ color: getColor(context) }}
             >
               {contexts.map(c => (
@@ -112,7 +135,10 @@ export default function CreateTask({ open, defaultDate, onClose, onCreated }: Pr
             </div>
           </div>
 
-          {agents.length > 0 && (
+          {agents.filter(a =>
+            (!a.context || a.context === context) &&
+            (!a.project || !project.trim() || a.project === project.trim())
+          ).length > 0 && (
             <div className="create-task-field">
               <span className="create-task-label">Agent</span>
               <select
@@ -122,7 +148,10 @@ export default function CreateTask({ open, defaultDate, onClose, onCreated }: Pr
               >
                 <option value="">None</option>
                 {agents
-                  .filter(a => !a.context || a.context === context)
+                  .filter(a =>
+                    (!a.context || a.context === context) &&
+                    (!a.project || !project.trim() || a.project === project.trim())
+                  )
                   .map(a => (
                     <option key={a.path} value={a.path} title={a.description ?? undefined}>
                       {(!a.context && a.folder) ? `${a.folder} / ${a.name}` : a.name}
@@ -146,11 +175,20 @@ export default function CreateTask({ open, defaultDate, onClose, onCreated }: Pr
               <span className="create-task-label">Project</span>
               <input
                 type="text"
+                list="ct-project-list"
                 className="create-task-project"
                 value={project}
-                onChange={e => setProject(e.target.value)}
+                onChange={e => handleProjectChange(e.target.value)}
                 placeholder="Optional"
+                autoComplete="off"
               />
+              <datalist id="ct-project-list">
+                {projects
+                  .filter(p => !p.context || p.context === context)
+                  .map(p => (
+                    <option key={p.name} value={p.name} />
+                  ))}
+              </datalist>
             </div>
           </div>
 

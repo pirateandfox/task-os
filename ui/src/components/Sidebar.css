@@ -1,0 +1,121 @@
+.sidebar {
+  width: 160px;
+  flex-shrink: 0;
+  background: var(--surface2);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  -webkit-app-region: drag;
+}
+
+.sidebar-drag {
+  height: 44px;
+  flex-shrink: 0;
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: 4px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  -webkit-app-region: no-drag;
+  overflow-y: auto;
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+  width: 100%;
+  text-align: left;
+  position: relative;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar-item:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.sidebar-item.active {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+}
+
+.sidebar-icon {
+  font-size: 14px;
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.sidebar-label {
+  flex: 1;
+  font-weight: 500;
+}
+
+.sidebar-badge {
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 10px;
+  line-height: 1.4;
+  min-width: 16px;
+  text-align: center;
+}
+
+.sidebar-actions {
+  padding: 8px 6px 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+  width: 100%;
+  text-align: left;
+}
+
+.sidebar-action-btn:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.sidebar-action-btn.active {
+  color: var(--accent);
+}
+
+.sidebar-action-btn.new-btn {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.sidebar-action-btn span:first-child {
+  width: 18px;
+  text-align: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}

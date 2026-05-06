@@ -150,6 +150,18 @@ function migrate() {
       archived   INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS agents (
+      path         TEXT PRIMARY KEY,
+      name         TEXT NOT NULL,
+      context      TEXT,
+      project      TEXT,
+      description  TEXT,
+      command      TEXT,
+      coding       INTEGER NOT NULL DEFAULT 0,
+      relative_path TEXT,
+      folder       TEXT,
+      last_seen    TEXT NOT NULL DEFAULT (datetime('now'))
+    );
     CREATE TABLE IF NOT EXISTS notes (
       id           TEXT PRIMARY KEY,
       task_id      TEXT NOT NULL REFERENCES tasks(id),
@@ -201,6 +213,16 @@ function migrate() {
   tryAlter("ALTER TABLE contexts ADD COLUMN color TEXT NOT NULL DEFAULT '#888888'")
   tryAlter('ALTER TABLE contexts ADD COLUMN sort_order INTEGER')
   tryAlter('ALTER TABLE habits ADD COLUMN recurrence_days TEXT')
+  tryAlter('ALTER TABLE projects ADD COLUMN is_repo INTEGER NOT NULL DEFAULT 0')
+  tryAlter('ALTER TABLE projects ADD COLUMN context TEXT')
+  // Backfill projects.context from the most common task context per project
+  db.exec(`
+    UPDATE projects SET context = (
+      SELECT t.context FROM tasks t
+      WHERE t.project = projects.name AND t.context IS NOT NULL AND t.status != 'archived'
+      GROUP BY t.context ORDER BY COUNT(*) DESC LIMIT 1
+    ) WHERE context IS NULL
+  `)
   // Backfill label from display_name for rows created before label column existed
   tryAlter("UPDATE contexts SET label = display_name WHERE label IS NULL AND display_name IS NOT NULL")
   // Always ensure the default context exists
@@ -309,6 +331,16 @@ function getTasksForDate(date) {
 function getTask(id) { return db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) ?? null }
 function getSubtasks(id) { return db.prepare(`SELECT * FROM tasks WHERE parent_id = ? ORDER BY sort_order ASC NULLS LAST, created_at ASC`).all(id) }
 function getBacklog() { return db.prepare(`SELECT * FROM tasks WHERE status = 'backlog' AND parent_id IS NULL ORDER BY context ASC, project ASC NULLS LAST, sort_order ASC NULLS LAST, created_at ASC`).all() }
+
+function getCodingTasks() {
+  const tasks = attachSubtasks(db.prepare(`SELECT * FROM tasks WHERE task_type = 'coding' AND status NOT IN ('done','archived') AND parent_id IS NULL ORDER BY created_at DESC`).all())
+  stampAgentJobs(tasks)
+  return tasks
+}
+
+function getReadingTasks() {
+  return attachSubtasks(db.prepare(`SELECT * FROM tasks WHERE task_type = 'reading' AND status NOT IN ('done','archived') AND parent_id IS NULL ORDER BY my_priority ASC NULLS LAST, created_at DESC`).all())
+}
 
 function createTask(body) {
   if (!body.title) throw new Error('title required')
@@ -473,10 +505,128 @@ function deleteContext(slug) { db.prepare('DELETE FROM contexts WHERE slug = ?')
 
 // ── Projects ──────────────────────────────────────────────────────────────────
 
+function getProjectSummaries() {
+  const projects = db.prepare('SELECT * FROM projects WHERE archived = 0 ORDER BY name ASC').all()
+  const activeCounts = db.prepare(`SELECT project, COUNT(*) as n FROM tasks WHERE status = 'active' AND task_type NOT IN ('coding','event') AND project IS NOT NULL GROUP BY project`).all()
+  const codingCounts = db.prepare(`SELECT project, COUNT(*) as n FROM tasks WHERE task_type = 'coding' AND status NOT IN ('done','archived') AND project IS NOT NULL GROUP BY project`).all()
+  const backlogCounts = db.prepare(`SELECT project, COUNT(*) as n FROM tasks WHERE status = 'backlog' AND project IS NOT NULL GROUP BY project`).all()
+  // Fallback context from tasks for projects that predate the context column
+  const ctxRows = db.prepare(`SELECT project, context FROM tasks WHERE project IS NOT NULL AND status NOT IN ('archived') GROUP BY project`).all()
+  // Agent counts: explicit project match OR context-slug-equals-project-name match.
+  // This gives silvermouse its 6 context agents without flooding unrelated projects.
+  const agentCounts = db.prepare(`
+    SELECT name_key, COUNT(*) as n FROM (
+      SELECT project AS name_key FROM agents WHERE project IS NOT NULL
+      UNION ALL
+      SELECT context AS name_key FROM agents WHERE project IS NULL AND context IS NOT NULL
+    ) GROUP BY name_key
+  `).all()
+  const activeMap = {}, codingMap = {}, backlogMap = {}, ctxMap = {}, agentCountMap = {}
+  for (const r of activeCounts) activeMap[r.project] = r.n
+  for (const r of codingCounts) codingMap[r.project] = r.n
+  for (const r of backlogCounts) backlogMap[r.project] = r.n
+  for (const r of ctxRows) ctxMap[r.project] = r.context
+  for (const r of agentCounts) agentCountMap[r.name_key] = r.n
+  return projects.map(p => ({
+    name: p.name,
+    context: p.context ?? ctxMap[p.name] ?? null,
+    isRepo: p.is_repo === 1,
+    activeCount: activeMap[p.name] ?? 0,
+    codingCount: codingMap[p.name] ?? 0,
+    backlogCount: backlogMap[p.name] ?? 0,
+    agentCount: agentCountMap[p.name] ?? 0,
+  }))
+}
+
+function getProjectDetail(name) {
+  const project = db.prepare('SELECT * FROM projects WHERE name = ?').get(name)
+  const active = attachSubtasks(db.prepare(`SELECT * FROM tasks WHERE project = ? AND status = 'active' AND task_type NOT IN ('coding','event') AND parent_id IS NULL ORDER BY ${ORDER}`).all(name))
+  const coding = attachSubtasks(db.prepare(`SELECT * FROM tasks WHERE project = ? AND task_type = 'coding' AND status NOT IN ('done','archived') AND parent_id IS NULL ORDER BY created_at DESC`).all(name))
+  const backlog = attachSubtasks(db.prepare(`SELECT * FROM tasks WHERE project = ? AND status = 'backlog' AND parent_id IS NULL ORDER BY ${ORDER}`).all(name))
+  const doneRecent = attachSubtasks(db.prepare(`SELECT * FROM tasks WHERE project = ? AND status = 'done' AND parent_id IS NULL AND last_touched_human >= datetime('now','-14 days','localtime') ORDER BY last_touched_human DESC LIMIT 20`).all(name))
+  stampAgentJobs(active, coding)
+  // Show agents explicitly assigned to this project, OR whose context slug IS the project name
+  // (e.g. project "silvermouse" matches agents with context="silvermouse").
+  // We intentionally do NOT use the tasks' context — that would flood projects like "ROI Solutions"
+  // (whose tasks live in "internal") with unrelated internal-context agents.
+  const agents = db.prepare(`
+    SELECT * FROM agents
+    WHERE project = ?
+       OR (context = ? AND project IS NULL)
+    ORDER BY folder ASC NULLS LAST, name ASC
+  `).all(name, name)
+  const ctxRow = db.prepare(`
+    SELECT context, COUNT(*) as n FROM tasks
+    WHERE project = ? AND context IS NOT NULL AND status NOT IN ('archived')
+    GROUP BY context ORDER BY n DESC LIMIT 1
+  `).get(name)
+  return {
+    name,
+    context: project?.context ?? ctxRow?.context ?? null,
+    isRepo: project?.is_repo === 1,
+    active, coding, backlog, doneRecent, agents,
+  }
+}
+
 function listProjects(includeArchived = false) {
   return includeArchived
     ? db.prepare('SELECT * FROM projects ORDER BY archived ASC, name ASC').all()
     : db.prepare('SELECT * FROM projects WHERE archived = 0 ORDER BY name ASC').all()
+}
+function createProjectExplicit(name) {
+  db.prepare('INSERT OR IGNORE INTO projects (name) VALUES (?)').run(name)
+  return { ok: true }
+}
+function updateProject(name, fields) {
+  const allowed = ['is_repo', 'archived']
+  const sets = []; const params = {}
+  for (const f of allowed) { if (fields[f] !== undefined) { sets.push(`${f} = @${f}`); params[f] = fields[f] } }
+  if (!sets.length) return { ok: true }
+  params.name = name
+  db.prepare(`UPDATE projects SET ${sets.join(', ')} WHERE name = @name`).run(params)
+  return { ok: true }
+}
+function upsertAgents(agents) {
+  const upsert = db.prepare(`
+    INSERT INTO agents (path, name, context, project, description, command, coding, relative_path, folder, last_seen)
+    VALUES (@path, @name, @context, @project, @description, @command, @coding, @relative_path, @folder, datetime('now'))
+    ON CONFLICT(path) DO UPDATE SET
+      name = excluded.name, context = excluded.context, project = excluded.project,
+      description = excluded.description, command = excluded.command, coding = excluded.coding,
+      relative_path = excluded.relative_path, folder = excluded.folder, last_seen = excluded.last_seen
+  `)
+  const run = db.transaction(list => { for (const a of list) upsert.run(a) })
+  run(agents.map(a => ({
+    path: a.path, name: a.name, context: a.context ?? null, project: a.project ?? null,
+    description: a.description ?? null, command: a.command ?? null,
+    coding: a.coding ? 1 : 0, relative_path: a.relativePath ?? null, folder: a.folder ?? null,
+  })))
+  return { ok: true, count: agents.length }
+}
+function listAgentsDb(filter = {}) {
+  const conds = []; const params = {}
+  if (filter.project !== undefined) { conds.push('project = @project'); params.project = filter.project }
+  if (filter.context !== undefined) { conds.push('context = @context'); params.context = filter.context }
+  const where = conds.length ? `WHERE ${conds.join(' AND ')}` : ''
+  return db.prepare(`SELECT * FROM agents ${where} ORDER BY folder ASC NULLS LAST, name ASC`).all(params)
+}
+function renameProject(oldName, newName) {
+  const existing = db.prepare('SELECT name FROM projects WHERE name = ?').get(newName)
+  db.transaction(() => {
+    db.prepare('UPDATE tasks SET project = ? WHERE project = ?').run(newName, oldName)
+    if (existing) {
+      // merge: target already exists, just remove the old row
+      db.prepare('DELETE FROM projects WHERE name = ?').run(oldName)
+    } else {
+      db.prepare('UPDATE projects SET name = ? WHERE name = ?').run(newName, oldName)
+    }
+  })()
+  return { ok: true, merged: !!existing }
+}
+function setProjectContext(name, context) {
+  db.prepare("UPDATE projects SET context = ? WHERE name = ?").run(context, name)
+  db.prepare("UPDATE tasks SET context = ? WHERE project = ?").run(context, name)
+  return { ok: true }
 }
 function archiveProject(name) { db.prepare('UPDATE projects SET archived = 1 WHERE name = ?').run(name); return { ok: true } }
 function unarchiveProject(name) { db.prepare('UPDATE projects SET archived = 0 WHERE name = ?').run(name); return { ok: true } }
@@ -617,7 +767,7 @@ function insertAutorunJob(taskId, agentPath, prompt) {
 // ── Dispatch ──────────────────────────────────────────────────────────────────
 
 const METHODS = {
-  getTasksForDate, getTask, getSubtasks, getBacklog,
+  getTasksForDate, getTask, getSubtasks, getBacklog, getCodingTasks, getReadingTasks,
   createTask, updateTask, deleteTask,
   completeTask, completeTaskWithSubtasks, uncompleteTask,
   skipTask, activateTask, snoozeTask,
@@ -626,7 +776,9 @@ const METHODS = {
   listNotes, addNote,
   getDailyNote, saveDailyNote,
   listContexts, createContext, updateContext, deleteContext,
-  listProjects, archiveProject, unarchiveProject, deleteProject,
+  getProjectSummaries, getProjectDetail,
+  listProjects, createProjectExplicit, updateProject, renameProject, setProjectContext, archiveProject, unarchiveProject, deleteProject,
+  upsertAgents, listAgentsDb,
   listHabits, createHabit, updateHabit, logHabit, unlogHabit,
   listAttachments, insertAttachment, getAttachment, deleteAttachment,
   getPendingAttachments, updateAttachmentStorage,

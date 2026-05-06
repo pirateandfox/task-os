@@ -187,12 +187,13 @@ async function getAutoUpdater() {
     sendUpdaterStatus('downloaded', { version: info.version })
   })
   autoUpdater.on('error', err => {
-    console.error('[updater] Error:', err.message)
+    console.error('[updater] Error:', err.message, err.stack)
     const win = BrowserWindow.getAllWindows()[0]
     if (win) win.setProgressBar(-1)
     if (autoUpdater._verbose) {
       const isAvailability = /404|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|certificate|getaddrinfo|net::/i.test(err.message)
-      sendUpdaterStatus('error', { message: isAvailability ? 'Update server not currently available.' : 'Could not check for updates.' })
+      const msg = isAvailability ? 'Update server not currently available.' : `Update error: ${err.message}`
+      sendUpdaterStatus('error', { message: msg })
     }
   })
   _autoUpdater = autoUpdater
@@ -413,14 +414,22 @@ function setupUpdaterIpc() {
   })
   ipcMain.handle('updater:install', async () => {
     const au = await getAutoUpdater().catch(() => null)
-    if (au) au.quitAndInstall()
+    if (!au) return
+    try {
+      console.log('[updater] quitAndInstall called')
+      au.quitAndInstall()
+    } catch (err) {
+      console.error('[updater] quitAndInstall error:', err.message, err.stack)
+      sendUpdaterStatus('error', { message: `Install error: ${err.message}` })
+    }
   })
 }
 
 app.whenReady().then(async () => {
   setupLogging()
 
-  const icon = nativeImage.createFromPath(path.join(__dirname, 'assets/icon.png'))
+  const iconFile = process.platform === 'darwin' ? 'icon.icns' : 'icon.png'
+  const icon = nativeImage.createFromPath(path.join(__dirname, 'assets', iconFile))
   app.dock?.setIcon(icon)
 
   // In dev, data stays in the project's db/ dir; in production, migrate to userData

@@ -1,5 +1,172 @@
 # Qalatra — Evolution Notes
 
+## 1.2.0 — Reading view, task type toggle, smart new-task form, Code view idle section (2026-05-06)
+
+### Reading view (`task_type = 'reading'`)
+
+New `task_type` value `'reading'` routes tasks to a dedicated **📖 Reading** sidebar section, keeping them off the Priority view. Same pattern as the Coding view.
+
+- Sidebar nav item added between Code and Projects
+- `getReadingTasks()` in `db-worker.js`: queries `task_type = 'reading'`, ordered by priority then created date
+- `tasks:reading` IPC handler + `fetchReadingTasks()` in `api.ts`
+- `ReadingView.tsx`: simple list, no polling needed (no agent jobs)
+- MCP `create_task` / `update_task` / `search_tasks` all accept `reading` as a `task_type` value
+
+### Task type toggle in detail panel
+
+Tasks of type `task` (the default) now show a **Type** row in the detail panel with ⌨ Coding and 📖 Reading pills. Clicking a pill toggles that type on; clicking it again resets back to `task`. Hidden for events and reminders.
+
+Previously, setting `task_type = 'coding'` could only be done via MCP or by assigning an agent with `"coding": true`. Now any task can be manually routed to the Code or Reading view from within the UI.
+
+### Code view: idle tasks now visible
+
+**Bug fix (pre-existing):** `CodeAgentsView` only rendered Running and Queued sections. Tasks with `task_type = 'coding'` but no active agent job (idle between pipeline stages, completed job, failed job) were fetched but never displayed — blank screen with tasks.
+
+Added an **⌨ Idle** section for all coding tasks not currently running or queued. The empty state message also updated from "No active code agents running" to "No coding tasks."
+
+### New task form improvements
+
+- **Project field** is now a combobox (`<input list>` + `<datalist>`) instead of free text. Options are filtered to projects whose `context` matches the selected context (or projects with no context). Free-text entry still works for new project names.
+- **Agent dropdown** now filters live by both context **and** project. As context or project changes, the agent list narrows in real time. If the currently-selected agent no longer matches, it's cleared automatically.
+- Changing context clears project and agent (since both lists change).
+
+### Files changed
+
+- `ui/src/types/task.ts` — added `'reading'` to `task_type` union
+- `db-worker.js` — added `getReadingTasks()`; added to exports
+- `ipc-handlers.js` — added `tasks:reading` handler
+- `ui/src/api.ts` — added `fetchReadingTasks()`; added `fetchProjectSummaries` import to `CreateTask`
+- `ui/src/components/ReadingView.tsx` — new component
+- `ui/src/components/Sidebar.tsx` — added `'reading'` to `NavSection`, 📖 Reading nav item
+- `ui/src/App.tsx` — routes `nav === 'reading'` to `ReadingView`
+- `ui/src/components/DetailPanel.tsx` — added `SPECIAL_TYPES` / `SPECIAL_TYPE_LABELS`; Type row with Coding + Reading pills
+- `ui/src/components/CodeAgentsView.tsx` — added Idle section; fixed empty-state message
+- `ui/src/components/CreateTask.tsx` — project combobox with context-filtered datalist; agent filter includes project; `handleContextChange` / `handleProjectChange` handlers
+- `mcp/tools/tasks.js` — updated all `task_type` descriptions to include `reading`
+
+## 1.1.1 — Sidebar nav, Code view, coding task type, MCP auto-restart (2026-05-05)
+
+### Sidebar navigation
+
+The top tab bar has been replaced with a 160px left sidebar. Nav items:
+
+| Item | Key | Shows |
+|------|-----|-------|
+| ★ Priority | `priority` | Tasks needing human attention today |
+| ⌨ Code | `code` | All tasks with `task_type = 'coding'` |
+| ⊞ Projects | `project` | Tasks grouped by context → project |
+| ≡ Backlog | `backlog` | Backlog tasks |
+| ◎ Habits | `habits` | Daily habits |
+
+The sidebar handles the macOS traffic-light drag zone (top 44px). Utility buttons (New Task, Daily Note, Settings, Theme) moved to the sidebar bottom. The date nav and terminal/refresh controls remain in a slim content-area header above the main panel.
+
+The single `nav: NavSection` state in `App.tsx` replaces the previous `screen` + `view` pair.
+
+### `task_type = 'coding'` and the Code view
+
+**The problem:** Autonomous coding agents run for long periods (15–60+ minutes) with only occasional human review points. They cluttered the Priority view, making it hard to see what actually needed attention.
+
+**The solution:** A new `task_type` value `'coding'` routes tasks to the Code view permanently. Priority view excludes `task_type = 'coding'` entirely. The Code view is the holding area for anything in the coding pipeline.
+
+#### Feedback loop (human review)
+
+When a coding task needs human review, the monitoring agent calls:
+```
+update_task({ task_id: "...", task_type: "task" })
+```
+This moves the task from Code → Priority, where it appears like a normal task. Once the human gives feedback and hands it back to the pipeline, the agent sets `task_type` back to `'coding'` to return it to the Code view.
+
+#### Auto-set on agent start
+
+Add `"coding": true` to an agent's `agent.config`. When the Qalatra job runner starts that agent's job, it automatically sets `task_type = 'coding'` on the task:
+
+```json
+{
+  "name": "FlightDesk Builder",
+  "command": "node build-pipeline.js {spec_file}",
+  "coding": true
+}
+```
+
+No AI involvement needed — the runner does the flip as soon as it starts executing.
+
+#### MCP tool changes
+
+- `create_task` and `update_task`: `task_type` now accepts `'coding'` in addition to `task | event | reminder`.
+- `search_tasks`: new `task_type` filter parameter. The monitoring agent can find all its work with:
+  ```
+  search_tasks({ task_type: "coding", status: "active" })
+  ```
+- `update_task` is the signal for "needs human review" — set `task_type: "task"` to surface in Priority, set `task_type: "coding"` to return to Code view.
+
+#### Key behaviors
+
+- Coding tasks at rest between pipeline stages stay in the Code view (not just when an agent is actively running).
+- `agent_job_status` (queued/running/done/failed) still drives the visual spinner within the Code view.
+- Completed/archived coding tasks disappear like normal tasks — they don't persist in the Code view.
+- The sidebar badge on ⌨ Code shows the count of active agent jobs (`agent_job_status = running | queued`) from today's task data.
+
+#### Files changed
+
+- `ui/src/types/task.ts` — added `'coding'` to `task_type` union
+- `ui/src/api.ts` — added `coding` field to `Agent` interface; added `fetchCodingTasks()`
+- `db-worker.js` — added `getCodingTasks()` (queries `task_type = 'coding'`, not done/archived)
+- `ipc-handlers.js` — added `tasks:coding` IPC handler; `scanAgents` includes `coding` field; job runner auto-sets `task_type = 'coding'` when `cfg.coding === true`
+- `ui/src/components/CodeAgentsView.tsx` — new view component, polls every 5s when agents active
+- `ui/src/components/TaskList.tsx` — `PriorityView` filters out `task_type === 'coding'`
+- `mcp/tools/tasks.js` — updated `task_type` descriptions; added `task_type` filter to `search_tasks`
+
+### MCP server auto-restart via launchd
+
+**The problem:** The Qalatra MCP server (port 3457) had no process supervisor. A crash left it down until manually restarted. Agent tool calls during that window hung for the full timeout (observed: 60+ minutes). The coding pipeline runs every 30 minutes unattended — one crash = one wasted hour.
+
+**The solution:** A launchd plist at `~/Library/LaunchAgents/com.qalatra.mcp.plist` supervises the MCP server process. On crash, launchd restarts it within 5 seconds.
+
+#### Ownership model
+
+launchd starts the MCP server at login. Electron already has an `isPortTaken(3457)` check in `startMcpServer()` — when launchd owns the port, Electron silently skips spawning its own. All requests route through the supervised process.
+
+When Electron is also running (e.g., dev mode), both attempt the port:
+- launchd service starts first (at login), takes port 3457
+- Electron opens, finds port taken, skips spawning — no conflict
+
+#### Port conflict handling
+
+Previously, `EADDRINUSE` caused `process.exit(1)`, making launchd restart every 5 seconds and spam the log. Fixed: the server now retries internally every 30 seconds on port conflict, staying alive until the port becomes free. Real crashes still exit with code 1, triggering a launchd restart within 5 seconds.
+
+#### Plist location
+
+- Active: `~/Library/LaunchAgents/com.qalatra.mcp.plist`
+- Repo copy: `scripts/com.qalatra.mcp.plist`
+
+Key plist settings:
+```xml
+<key>KeepAlive</key><true/>
+<key>ThrottleInterval</key><integer>5</integer>
+<key>RunAtLoad</key><true/>
+```
+
+Node path is hardcoded to the asdf-installed binary (`~/.asdf/installs/nodejs/22.14.0/bin/node`). Update if the Node version changes.
+
+Logs: `~/Library/Logs/qalatra-mcp.log`
+
+To reload after changes: `launchctl kickstart -k gui/$(id -u)/com.qalatra.mcp`
+
+#### `ping` health-check tool
+
+A new `ping` MCP tool returns immediately with `{ ok: true, ts: "..." }`. Agents can call it before starting a pipeline run to verify MCP is reachable in <1s rather than waiting for a tool timeout to discover the server is down.
+
+```
+ping({})  →  { "ok": true, "ts": "2026-05-05T13:00:00.000Z" }
+```
+
+#### Files changed
+
+- `mcp/tools/health.js` — new file, exports `ping` tool
+- `mcp/http-server.js` — imports health tools; `EADDRINUSE` now retries every 30s instead of crashing
+- `~/Library/LaunchAgents/com.qalatra.mcp.plist` — launchd service definition
+- `scripts/com.qalatra.mcp.plist` — repo copy
+
 ## 1.0.73 — Inbox, collapsible sections, agent indicator (2026-04-27)
 
 ### Inbox

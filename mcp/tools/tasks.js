@@ -86,12 +86,13 @@ export const toolDefs = [
         tags:            { type: 'string', description: 'Comma-separated tags' },
         ai_context:      { type: 'string', description: 'Initial context note' },
         status:          { type: 'string', description: 'active (default) | snoozed | backlog | archived' },
-        task_type:       { type: 'string', description: 'task (default) | event | reminder' },
+        task_type:       { type: 'string', description: 'task (default) | event | reminder | coding | reading' },
         event_time:      { type: 'string', description: 'HH:MM start time for events (e.g. 14:30). Null = all-day.' },
         end_time:        { type: 'string', description: 'HH:MM end time for events. If omitted, defaults to 1hr after event_time.' },
         parent_id:       { type: 'string', description: 'ID of parent task (for subtasks)' },
         recurrence:      { type: 'string', description: 'daily | weekdays | weekly | monthly — auto-respawns on completion' },
         agent_path:      { type: 'string', description: 'Absolute path to the agent folder to dispatch this task to (e.g. /Users/you/IdeaProjects/myrepo/agents/planning)' },
+        assigned_agent:  { type: 'string', description: 'Human-readable name of the agent assigned to this task (e.g. "Code Planner", "Research Agent"). Used to filter tasks by agent.' },
         links:           { type: 'array', items: { type: 'string' }, description: 'Array of URLs or file paths to attach to the task' },
         inbox:           { type: 'boolean', description: 'Mark as inbox item — surfaces in a separate Inbox section for human review before scheduling. Use when creating tasks on behalf of the user that need triage.' },
       },
@@ -119,13 +120,14 @@ export const toolDefs = [
         source_url:      { type: 'string' },
         tags:            { type: 'string' },
         ai_context:      { type: 'string', description: 'New note to prepend (timestamped automatically)' },
-        task_type:       { type: 'string', description: 'task | event | reminder' },
+        task_type:       { type: 'string', description: 'task | event | reminder | coding | reading' },
         event_time:      { type: 'string', description: 'HH:MM start time for events. Null = all-day.' },
         end_time:        { type: 'string', description: 'HH:MM end time for events. Defaults to 1hr after event_time if omitted.' },
         recurrence:      { type: 'string', description: 'daily | weekdays | weekly | monthly | null to clear' },
         parent_id:       { type: 'string', description: 'ID of parent task (for subtasks). Pass empty string to clear.' },
         links:           { type: 'array', items: { type: 'object' }, description: 'Array of link objects e.g. [{"url": "/path/to/file.md"}]. Replaces existing links.' },
         agent_path:          { type: 'string', description: 'Absolute path to the agent folder for this task. Pass empty string to clear.' },
+        assigned_agent:      { type: 'string', description: 'Human-readable agent name (e.g. "Code Planner"). Pass empty string to clear.' },
         agent_autorun:       { type: 'boolean', description: 'Whether the agent should run automatically on a schedule.' },
         agent_autorun_time:  { type: 'string', description: 'HH:MM time for the daily auto-run (e.g. "05:00"). Requires agent_autorun: true.' },
         inbox:               { type: 'boolean', description: 'Set to false to clear from inbox (move to normal task list).' },
@@ -146,16 +148,34 @@ export const toolDefs = [
   },
   {
     name: 'search_tasks',
-    description: 'Search tasks by keyword, context, status, or tags.',
+    description: 'Search tasks by keyword, context, status, task_type, tags, or assigned agent.',
     inputSchema: {
       type: 'object',
       properties: {
-        query:   { type: 'string', description: 'Searches title, description, ai_context' },
-        context: { type: 'string', description: 'Context slug or label (e.g. "monroe" or "Monroe Institute"). Use list_contexts to see all values.' },
-        status:  { type: 'string', description: 'active | snoozed | backlog | archived | done' },
-        tags:    { type: 'string' },
-        limit:   { type: 'integer', description: 'Default 20' },
+        query:          { type: 'string', description: 'Searches title, description, ai_context' },
+        context:        { type: 'string', description: 'Context slug or label (e.g. "monroe" or "Monroe Institute"). Use list_contexts to see all values.' },
+        status:         { type: 'string', description: 'active | snoozed | backlog | archived | done' },
+        task_type:      { type: 'string', description: 'Filter by type: task | event | reminder | coding | reading' },
+        tags:           { type: 'string' },
+        assigned_agent: { type: 'string', description: 'Filter by assigned_agent name (partial match, case-insensitive)' },
+        agent_path:     { type: 'string', description: 'Filter by agent_path folder (partial match, e.g. "muzebook/agents/plan")' },
+        limit:          { type: 'integer', description: 'Default 20' },
       },
+    },
+  },
+  {
+    name: 'get_tasks_by_agent',
+    description: 'Get tasks assigned to a specific agent, each annotated with its latest job status (job_status: queued | running | done | failed | null). Matches against assigned_agent (human name) OR agent_path (folder path). Pass a name like "Code Planner" or a path fragment like "muzebook/agents/plan". Filter by job_status to find currently running jobs or only unstarted work.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent:      { type: 'string', description: 'Agent name or path fragment (partial match against assigned_agent OR agent_path, case-insensitive)' },
+        status:     { type: 'string', description: 'Task status: active | snoozed | backlog | archived | done. Defaults to active.' },
+        job_status: { type: 'string', description: 'Filter by latest agent job status: queued | running | done | failed | none (no job ever queued)' },
+        context:    { type: 'string', description: 'Optional context filter' },
+        limit:      { type: 'integer', description: 'Default 50' },
+      },
+      required: ['agent'],
     },
   },
   {
@@ -253,6 +273,28 @@ export const toolDefs = [
       required: ['task_id'],
     },
   },
+  {
+    name: 'list_projects',
+    description: 'List all projects with their task counts. Use this before rename_project to see the current project names.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        include_archived: { type: 'boolean', description: 'Include archived projects (default false)' },
+      },
+    },
+  },
+  {
+    name: 'rename_project',
+    description: 'Rename a project. If the target name already exists, the two projects are merged (all tasks from "from" move to "to", the "from" project is deleted). Use this to clean up slug/title duplicates like "silvermouse" → "Silvermouse" or to consolidate projects.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        from: { type: 'string', description: 'Current project name (exact match)' },
+        to:   { type: 'string', description: 'New project name. If this already exists, projects will be merged.' },
+      },
+      required: ['from', 'to'],
+    },
+  },
 ];
 
 export const handlers = {
@@ -265,12 +307,12 @@ export const handlers = {
         id, title, description, status, my_priority, energy_required, context, project, tags,
         source, source_id, source_url, source_priority, due_date, start_date, surface_after,
         created_at, updated_at, ai_context, task_type, event_time, end_time, parent_id, recurrence,
-        agent_path, links, inbox
+        agent_path, assigned_agent, links, inbox
       ) VALUES (
         @id, @title, @description, @status, @my_priority, @energy_required, @context, @project, @tags,
         @source, @source_id, @source_url, @source_priority, @due_date, @start_date, @surface_after,
         @created_at, @updated_at, @ai_context, @task_type, @event_time, @end_time, @parent_id, @recurrence,
-        @agent_path, @links, @inbox
+        @agent_path, @assigned_agent, @links, @inbox
       )
     `).run({
       id,
@@ -298,6 +340,7 @@ export const handlers = {
       parent_id:       args.parent_id       ?? null,
       recurrence:      args.recurrence      ?? null,
       agent_path:      args.agent_path      ?? null,
+      assigned_agent:  args.assigned_agent  ?? null,
       links:           args.links ? JSON.stringify(args.links) : null,
       inbox:           args.inbox ? 1 : 0,
     });
@@ -317,7 +360,7 @@ export const handlers = {
       'title', 'description', 'status', 'my_priority', 'energy_required',
       'context', 'project', 'tags', 'source_url', 'due_date', 'start_date', 'surface_after',
       'task_type', 'event_time', 'end_time', 'recurrence', 'parent_id', 'agent_path',
-      'agent_autorun', 'agent_autorun_time', 'inbox',
+      'assigned_agent', 'agent_autorun', 'agent_autorun_time', 'inbox',
     ];
 
     const updates = {};
@@ -384,12 +427,72 @@ export const handlers = {
       conditions.push('tags LIKE @tags');
       params.tags = `%${args.tags}%`;
     }
+    if (args.assigned_agent) {
+      conditions.push('assigned_agent LIKE @assigned_agent');
+      params.assigned_agent = `%${args.assigned_agent}%`;
+    }
+    if (args.agent_path) {
+      conditions.push('agent_path LIKE @agent_path');
+      params.agent_path = `%${args.agent_path}%`;
+    }
+    if (args.task_type) {
+      conditions.push('task_type = @task_type');
+      params.task_type = args.task_type;
+    }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const limit = args.limit ?? 20;
     return db.prepare(
       `SELECT * FROM tasks ${where} ORDER BY my_priority ASC, due_date ASC LIMIT ${limit}`
     ).all(params);
+  },
+
+  get_tasks_by_agent(args) {
+    const db = openDb();
+    const pattern = `%${args.agent}%`;
+    const conditions = [
+      '(LOWER(t.assigned_agent) LIKE LOWER(@pattern) OR LOWER(t.agent_path) LIKE LOWER(@pattern))',
+    ];
+    const params = { pattern };
+
+    const status = args.status ?? 'active';
+    conditions.push('t.status = @status');
+    params.status = status;
+
+    if (args.context) {
+      const ctx = db.prepare(
+        `SELECT slug FROM contexts WHERE LOWER(slug) = LOWER(?) OR LOWER(label) = LOWER(?) LIMIT 1`
+      ).get(args.context, args.context);
+      conditions.push('t.context = @context');
+      params.context = ctx ? ctx.slug : args.context;
+    }
+
+    const limit = args.limit ?? 50;
+    let rows = db.prepare(`
+      SELECT t.*,
+             aj.id         AS job_id,
+             aj.status     AS job_status,
+             aj.started_at AS job_started_at,
+             aj.completed_at AS job_completed_at
+      FROM tasks t
+      LEFT JOIN agent_jobs aj ON aj.task_id = t.id
+        AND aj.id = (
+          SELECT id FROM agent_jobs WHERE task_id = t.id ORDER BY created_at DESC LIMIT 1
+        )
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY t.my_priority ASC, t.due_date ASC
+      LIMIT ${limit}
+    `).all(params);
+
+    if (args.job_status) {
+      if (args.job_status === 'none') {
+        rows = rows.filter(r => r.job_status == null);
+      } else {
+        rows = rows.filter(r => r.job_status === args.job_status);
+      }
+    }
+
+    return { agent: args.agent, status, count: rows.length, tasks: rows };
   },
 
   complete_task(args) {
@@ -514,6 +617,46 @@ export const handlers = {
     db.prepare('INSERT INTO contexts (slug, display_name, label, color, sort_order) VALUES (?, ?, ?, ?, ?)')
       .run(slug, label, label, args.color ?? '#888888', maxOrder + 1);
     return { slug, label, color: args.color ?? '#888888' };
+  },
+
+  list_projects(args) {
+    const db = openDb();
+    const includeArchived = args?.include_archived ?? false;
+    const rows = includeArchived
+      ? db.prepare('SELECT * FROM projects ORDER BY archived ASC, name ASC').all()
+      : db.prepare('SELECT * FROM projects WHERE archived = 0 ORDER BY name ASC').all();
+    const counts = db.prepare(`
+      SELECT project, COUNT(*) as total,
+        SUM(CASE WHEN status = 'active'  THEN 1 ELSE 0 END) as active,
+        SUM(CASE WHEN status = 'backlog' THEN 1 ELSE 0 END) as backlog
+      FROM tasks WHERE project IS NOT NULL GROUP BY project
+    `).all();
+    const countMap = {};
+    for (const r of counts) countMap[r.project] = r;
+    return rows.map(p => ({
+      name: p.name,
+      archived: p.archived === 1,
+      active: countMap[p.name]?.active ?? 0,
+      backlog: countMap[p.name]?.backlog ?? 0,
+      total: countMap[p.name]?.total ?? 0,
+    }));
+  },
+
+  rename_project(args) {
+    const db = openDb();
+    const { from, to } = args;
+    if (!from || !to) throw new Error('Both "from" and "to" are required');
+    if (from === to) throw new Error('"from" and "to" are the same');
+    const existing = db.prepare('SELECT name FROM projects WHERE name = ?').get(to);
+    db.transaction(() => {
+      db.prepare('UPDATE tasks SET project = ? WHERE project = ?').run(to, from);
+      if (existing) {
+        db.prepare('DELETE FROM projects WHERE name = ?').run(from);
+      } else {
+        db.prepare('UPDATE projects SET name = ? WHERE name = ?').run(to, from);
+      }
+    })();
+    return { ok: true, from, to, merged: !!existing };
   },
 
   archive_task(args) {
