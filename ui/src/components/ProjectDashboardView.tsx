@@ -173,7 +173,7 @@ function ProjectDetailView({ name, selectedId, onSelect, onMutate, onBack, onRen
   const [renaming, setRenaming] = useState(false)
   const [renameInput, setRenameInput] = useState(name)
   const renameInputRef = useRef<HTMLInputElement>(null)
-  const { contexts, getColor, getLabel } = useContexts()
+  const { contexts } = useContexts()
 
   const load = useCallback(async () => {
     const d = await fetchProjectDetail(name)
