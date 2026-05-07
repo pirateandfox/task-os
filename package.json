@@ -1,7 +1,7 @@
 {
   "name": "qalatra",
   "productName": "Qalatra",
-  "version": "1.2.0",
+  "version": "1.2.2",
   "description": "Personal task management system with Claude AI integration",
   "author": "Justin Handley",
   "type": "module",
