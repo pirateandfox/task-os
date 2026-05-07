@@ -11,7 +11,7 @@ interface Props {
   onMutate: () => void
 }
 
-function ProjectList({ onDrillIn, onRefresh }: { onDrillIn: (name: string) => void; onRefresh?: () => void }) {
+function ProjectList({ onDrillIn }: { onDrillIn: (name: string) => void; onRefresh?: () => void }) {
   const [summaries, setSummaries] = useState<ProjectSummary[]>([])
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -214,8 +214,6 @@ function ProjectDetailView({ name, selectedId, onSelect, onMutate, onBack, onRen
 
   if (!detail) return <div style={{ color: 'var(--muted)', padding: '40px', textAlign: 'center' }}>Loading…</div>
 
-  const color = getColor(detail.context ?? '')
-  const ctxLabel = getLabel(detail.context ?? '')
   const total = detail.active.length + detail.coding.length + detail.backlog.length
 
   return (
