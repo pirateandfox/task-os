@@ -201,6 +201,9 @@ export default function DetailPanel({ taskId, onClose, onMutate, onDelete, termi
 
   async function runAgent(userMessage?: string) {
     if (!task) return
+    if (task.task_type !== 'coding') {
+      await patch({ task_type: 'coding' })
+    }
     const job = await queueAgentJob(task.id, userMessage)
     setLatestJob(job)
   }

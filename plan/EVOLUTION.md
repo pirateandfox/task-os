@@ -1,5 +1,36 @@
 # Qalatra — Evolution Notes
 
+## 1.4.0 — Keyboard shortcuts + Play button for agent tasks (2026-05-08)
+
+### Keyboard shortcuts
+
+Full keyboard navigation added across the app via a single global handler in `App.tsx`.
+
+**Navigation:**
+- `1`–`7` — jump directly to any sidebar section (Priority, Code, Reading, Projects, Backlog, Habits, Heartbeats)
+- `d` — toggle Daily Note panel
+- `,` — toggle Settings panel
+- `t` / `Ctrl+\`` — toggle terminal
+
+**Task navigation & actions:**
+- `j` / `k` — select next / previous task row (DOM-based, works across all views)
+- `n` — open New Task dialog
+- `c` — complete the selected task and close the panel
+- `b` — move selected task to backlog and close the panel
+- `r` — refresh current view
+
+**Other:**
+- `?` — show/hide the keyboard shortcuts reference overlay
+- `Escape` — close shortcuts overlay → close create dialog → close detail panel (priority order)
+
+### Play button for agent tasks
+
+Tasks created with an `agent_path` (code agent assignment) now stay in Priority/Inbox until explicitly launched. A ▶ button appears on hover; clicking it sets `task_type = 'coding'` and queues the agent job, routing the task to the Code view at that point.
+
+- Previously, MCP `create_task` with `task_type=coding` auto-routed tasks immediately — agents would start without any user confirmation
+- MCP tool descriptions updated: do not set `task_type=coding` when creating agent tasks; task stays in inbox until ▶ is clicked
+- DetailPanel `runAgent()` also sets `task_type=coding` if not already set
+
 ## 1.2.3 — Heartbeats: persistent interval-based background agents (2026-05-07)
 
 New **Heartbeats** feature — always-on agent runners that fire on a fixed interval (5 min – 24h) and can be paused/resumed at any time.

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { fetchTasks, fetchSettings, type TaskData } from './api'
+import { fetchTasks, fetchSettings, updateTask, api, type TaskData } from './api'
 import { today as todayStr } from './lib/constants'
 import { ContextsProvider } from './lib/ContextsProvider'
 import { ThemeProvider, useTheme } from './lib/ThemeProvider'
@@ -18,6 +18,7 @@ import MeetingView from './components/MeetingView'
 import CreateTask from './components/CreateTask'
 import HabitsView from './components/HabitsView'
 import HeartbeatsView from './components/HeartbeatsView'
+import ShortcutsHelp from './components/ShortcutsHelp'
 import EmailPreview from './components/EmailPreview'
 import MdView from './mdpdf/MdView'
 import './index.css'
@@ -46,6 +47,7 @@ function AppInner() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsFullscreen, setSettingsFullscreen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [meetingId, setMeetingId]   = useState<string | null>(null)
   const [loading, setLoading]       = useState(false)
   const [apiError, setApiError]     = useState<string | null>(null)
@@ -110,23 +112,89 @@ function AppInner() {
 
   // Keyboard shortcuts
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === '`' && e.ctrlKey) setTerminalMode(m => m === 'closed' ? 'docked' : 'closed')
-      if (e.key === 'n' && !e.metaKey && !e.ctrlKey && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement) && !(e.target as HTMLElement).isContentEditable) {
-        setCreateOpen(true)
-      }
-      if (e.key === 'r' && !e.metaKey && !e.ctrlKey && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement) && !(e.target as HTMLElement).isContentEditable) {
-        nav === 'backlog' ? setBacklogRefresh(n => n + 1) : load(date)
-      }
+    const NAV_KEYS: Record<string, NavSection> = {
+      '1': 'priority', '2': 'code', '3': 'reading',
+      '4': 'project',  '5': 'backlog', '6': 'habits', '7': 'heartbeats',
+    }
+
+    const handler = async (e: KeyboardEvent) => {
+      const isInInput = (e.target instanceof HTMLInputElement) ||
+        (e.target instanceof HTMLTextAreaElement) ||
+        (e.target as HTMLElement).isContentEditable
+
+      // Always-active shortcuts (work even in inputs)
+      if (e.key === '`' && e.ctrlKey) { setTerminalMode(m => m === 'closed' ? 'docked' : 'closed'); return }
       if (e.key === 'Escape') {
+        if (shortcutsOpen) { setShortcutsOpen(false); return }
         if (createOpen) { setCreateOpen(false); return }
-        if (selectedId) setSelectedId(null)
-        if (meetingId) setMeetingId(null)
+        if (selectedId) { setSelectedId(null); return }
+        if (meetingId) { setMeetingId(null); return }
+        return
+      }
+
+      if (isInInput || e.metaKey || e.ctrlKey || e.altKey) return
+
+      // Navigation: number keys 1–7
+      if (NAV_KEYS[e.key]) {
+        setNav(NAV_KEYS[e.key])
+        setSelectedId(null)
+        return
+      }
+
+      // Single-key shortcuts
+      switch (e.key) {
+        case 'n':
+          setCreateOpen(true)
+          break
+        case 'r':
+          nav === 'backlog' ? setBacklogRefresh(n => n + 1) : load(date)
+          break
+        case 't':
+          setTerminalMode(m => m === 'closed' ? 'docked' : 'closed')
+          break
+        case 'd':
+          setDailyNoteOpen(o => !o)
+          break
+        case ',':
+          setSettingsOpen(o => !o)
+          break
+        case '?':
+          setShortcutsOpen(o => !o)
+          break
+        case 'j':
+        case 'k': {
+          const rows = Array.from(document.querySelectorAll<HTMLElement>('.task-row[data-id]'))
+          if (!rows.length) break
+          const currentIdx = rows.findIndex(r => r.dataset.id === selectedId)
+          const nextIdx = e.key === 'j'
+            ? (currentIdx === -1 ? 0 : Math.min(currentIdx + 1, rows.length - 1))
+            : (currentIdx === -1 ? rows.length - 1 : Math.max(currentIdx - 1, 0))
+          const nextId = rows[nextIdx]?.dataset.id
+          if (nextId) {
+            setSelectedId(nextId)
+            rows[nextIdx].scrollIntoView({ block: 'nearest' })
+          }
+          break
+        }
+        case 'c':
+          if (selectedId) {
+            await api.complete(selectedId)
+            setSelectedId(null)
+            nav === 'backlog' ? setBacklogRefresh(n => n + 1) : load(date, true)
+          }
+          break
+        case 'b':
+          if (selectedId) {
+            await updateTask(selectedId, { status: 'backlog' })
+            setSelectedId(null)
+            nav === 'backlog' ? setBacklogRefresh(n => n + 1) : load(date, true)
+          }
+          break
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [selectedId, meetingId, createOpen, nav, date, load])
+  }, [selectedId, meetingId, createOpen, shortcutsOpen, nav, date, load])
 
   if (meetingId) {
     return (
@@ -287,6 +355,7 @@ function AppInner() {
         />
       )}
       <UpdateBanner status={updateStatus} onDismiss={() => setUpdateStatus(null)} />
+      {shortcutsOpen && <ShortcutsHelp onClose={() => setShortcutsOpen(false)} />}
     </div>
     </ContextsProvider>
   )

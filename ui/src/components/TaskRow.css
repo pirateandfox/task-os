@@ -122,6 +122,8 @@
   color: var(--muted);
 }
 .action-btn:hover { background: var(--surface2); color: var(--text); }
+.action-btn--launch { color: var(--accent, #7c6af7); border-color: var(--accent, #7c6af7); }
+.action-btn--launch:hover { background: color-mix(in srgb, var(--accent, #7c6af7) 15%, transparent); color: var(--accent, #7c6af7); }
 
 .task-links { display: flex; align-items: center; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
 .platform-icon-link {

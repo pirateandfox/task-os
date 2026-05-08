@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { Task } from '../types/task'
 import { PRIORITY_COLORS, ENERGY_ICONS } from '../lib/constants'
 import { useContexts } from '../lib/ContextsProvider'
-import { api } from '../api'
+import { api, queueAgentJob, updateTask } from '../api'
 import SnoozePopover from './SnoozePopover'
 import PlatformIcon from './PlatformIcon'
 import { detectPlatform } from '../lib/constants'
@@ -21,6 +21,7 @@ interface Props {
 export default function TaskRow({ task, showContext = true, draggable = false, selected = false, onSelect, onMutate, onClearInbox }: Props) {
   const { getColor, getLabel } = useContexts()
   const [snoozeAnchor, setSnoozeAnchor] = useState<DOMRect | null>(null)
+  const [launching, setLaunching] = useState(false)
   const isDone = task.status === 'done'
   const isSnoozed = task.status === 'snoozed' || task.status === 'archived'
 
@@ -174,6 +175,22 @@ export default function TaskRow({ task, showContext = true, draggable = false, s
             </button>
           )}
           <div className="task-actions-buttons">
+            {!isDone && task.agent_path && task.task_type !== 'coding' && !task.agent_job_status && (
+              <button
+                className="action-btn action-btn--launch"
+                title="Launch agent — moves task to Code view"
+                disabled={launching}
+                onClick={async e => {
+                  e.stopPropagation()
+                  setLaunching(true)
+                  await updateTask(task.id, { task_type: 'coding' })
+                  await queueAgentJob(task.id)
+                  onMutate()
+                }}
+              >
+                {launching ? '…' : '▶'}
+              </button>
+            )}
             {!isDone && !task.recurrence && (
               <button
                 className="action-btn"
