@@ -190,11 +190,11 @@ async function startMcpServer(dbDir) {
   const env = { ...process.env, TASKOS_DB_DIR: dbDir, TASKOS_SETTINGS_FILE: path.join(dbDir, 'settings.json') }
 
   if (isDev) {
-    // Dev: plain child_process with system Node — no utilityProcess ABI mismatch.
-    // MCP only runs while electron-dev is active; no persistent service on dev machine.
+    // Dev: use the Electron binary with ELECTRON_RUN_AS_NODE=1 so the ABI matches
+    // the rebuild:electron step. System Node version is irrelevant in both dev and prod.
     await clearPort(mcpPort)
     console.log(`[mcp] starting dev server on :${mcpPort}`)
-    mcpProcess = spawn('node', [serverPath], { stdio: 'pipe', env })
+    mcpProcess = spawn(process.execPath, [serverPath], { stdio: 'pipe', env: { ...env, ELECTRON_RUN_AS_NODE: '1' } })
     pipeToLog(mcpProcess, 'mcp')
     mcpProcess.on('exit', (code, signal) => {
       if (signal !== 'SIGTERM' && code !== 0) console.error(`[mcp] exited: code=${code} signal=${signal}`)

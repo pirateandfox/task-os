@@ -46,16 +46,11 @@ pnpm run electron-dev        # kills stale processes, rebuilds native modules, s
 ```
 
 - Frontend: Vite dev server on port 5173 (Electron wraps it)
-- MCP server: port 3457, spawned by Electron as a plain `child_process` (system Node) — only runs while electron-dev is active
+- MCP server: port 3457, spawned by Electron using `process.execPath + ELECTRON_RUN_AS_NODE=1` — same Electron binary, same ABI as `db-worker.js`. Only `rebuild:electron` is needed; system Node version is irrelevant.
 
-**Two separate native module builds:**
+**One native module build:**
 
-| Module | ABI | Who uses it |
-|---|---|---|
-| `better-sqlite3` (Electron ABI) | `npm run rebuild:electron` | `db-worker.js` inside Electron |
-| `better-sqlite3` (system Node ABI) | `npm rebuild better-sqlite3` | MCP server (system Node child process) |
-
-`electron-dev` runs `rebuild:electron` automatically. After any `npm rebuild better-sqlite3` that rebuilds for system Node, run `rebuild:electron` before restarting electron-dev.
+`electron-dev` runs `rebuild:electron` automatically. That's all that's needed — both `db-worker.js` and the MCP server use the Electron binary's Node runtime.
 
 **If the MCP server hangs or DB calls fail**, kill it and let Electron respawn:
 
