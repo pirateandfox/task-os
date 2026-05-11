@@ -30,7 +30,7 @@ Qalatra is Justin's personal task management system: a local SQLite database wit
 │   ├── EVOLUTION.md        ← Running log of shipped features and known gaps
 │   ├── ARCHITECTURE.md     ← v2 vision (Automerge, Tauri, sync relay)
 │   └── FUTURE_IDEAS.md     ← Deferred ideas
-├── electron-builder.yml    ← Packaging config (DMG, signing, publish)
+├── electron-builder.yml    ← Packaging config (DMG, signing, publish). The `files:` list is **explicit** — any new root-level JS file imported by Electron entry points must be added here or the app will crash on launch. `scripts/check-imports.mjs` enforces this in CI and via `npm run check-imports`.
 ├── entitlements.mac.plist  ← macOS hardened runtime entitlements
 ├── scripts/notarize.mjs    ← Apple notarization hook (runs after electron-builder signs)
 └── assets/                 ← App icon source files
