@@ -321,6 +321,16 @@ function createWindow() {
     return { action: 'deny' }
   })
 
+  // Intercept in-window navigation (plain <a href> without target="_blank").
+  // The app itself loads from localhost:5173 (dev) or file:// (prod) — any
+  // other http/https URL is an external link and must open in the system browser.
+  win.webContents.on('will-navigate', (event, url) => {
+    if (/^https?:\/\//.test(url) && !url.startsWith('http://localhost:5173')) {
+      event.preventDefault()
+      shell.openExternal(url)
+    }
+  })
+
   // Forward renderer console messages to main.log so we can diagnose remote issues
   win.webContents.on('console-message', (_e, level, message, line, sourceId) => {
     const tag = ['verbose', 'info', 'warn', 'error'][level] ?? 'info'

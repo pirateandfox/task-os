@@ -14,13 +14,28 @@ const INTERVAL_OPTIONS = [
   { value: 1440, label: 'Every day' },
 ]
 
-function intervalLabel(minutes: number, runAtTime?: string | null) {
+function offsetOptions(intervalMinutes: number): { value: number; label: string }[] {
+  if (intervalMinutes >= 1440 || intervalMinutes < 30) return []
+  const step = intervalMinutes <= 60 ? 15 : Math.floor(intervalMinutes / 4)
+  const opts = []
+  for (let o = 0; o < intervalMinutes; o += step) {
+    const h = Math.floor(o / 60)
+    const m = o % 60
+    opts.push({ value: o, label: h > 0 ? `${h}:${String(m).padStart(2, '0')}` : `:${String(m).padStart(2, '0')}` })
+  }
+  return opts
+}
+
+function intervalLabel(minutes: number, runAtTime?: string | null, minuteOffset?: number | null) {
   if (minutes === 1440 && runAtTime) return `Daily at ${runAtTime}`
-  const opt = INTERVAL_OPTIONS.find(o => o.value === minutes)
-  if (opt) return opt.label
-  if (minutes < 60) return `Every ${minutes} min`
-  if (minutes === 60) return 'Every hour'
-  return `Every ${minutes / 60}h`
+  const base = INTERVAL_OPTIONS.find(o => o.value === minutes)?.label
+    ?? (minutes < 60 ? `Every ${minutes} min` : minutes === 60 ? 'Every hour' : `Every ${minutes / 60}h`)
+  if (minuteOffset != null) {
+    const h = Math.floor(minuteOffset / 60)
+    const m = minuteOffset % 60
+    return `${base} at ${h > 0 ? `${h}:${String(m).padStart(2, '0')}` : `:${String(m).padStart(2, '0')}`}`
+  }
+  return base
 }
 
 function relativeTime(isoStr: string | null): string {
@@ -59,6 +74,7 @@ interface Heartbeat {
   prompt: string
   interval_minutes: number
   run_at_time: string | null
+  minute_offset: number | null
   active: number
   last_run_at: string | null
   next_run_at: string | null
@@ -155,7 +171,7 @@ interface Props {
   onMutate?: () => void
 }
 
-const BLANK_FORM = { title: '', context: '', project: '', agent_path: '', prompt: '', interval_minutes: 60, run_at_time: '09:00' }
+const BLANK_FORM = { title: '', context: '', project: '', agent_path: '', prompt: '', interval_minutes: 60, run_at_time: '09:00', minute_offset: null as number | null }
 
 export default function HeartbeatsView({ onMutate }: Props) {
   const [heartbeats, setHeartbeats] = useState<Heartbeat[]>([])
@@ -213,6 +229,7 @@ export default function HeartbeatsView({ onMutate }: Props) {
       prompt: form.prompt.trim(),
       interval_minutes: form.interval_minutes,
       run_at_time: form.interval_minutes === 1440 ? form.run_at_time : null,
+      minute_offset: form.interval_minutes < 1440 ? form.minute_offset : null,
     })
     setForm(BLANK_FORM)
     setCreating(false)
@@ -244,6 +261,7 @@ export default function HeartbeatsView({ onMutate }: Props) {
       prompt: hb.prompt,
       interval_minutes: hb.interval_minutes,
       run_at_time: hb.run_at_time ?? '09:00',
+      minute_offset: hb.minute_offset ?? null,
     })
   }
 
@@ -256,6 +274,7 @@ export default function HeartbeatsView({ onMutate }: Props) {
       prompt: editForm.prompt.trim(),
       interval_minutes: editForm.interval_minutes,
       run_at_time: editForm.interval_minutes === 1440 ? editForm.run_at_time : null,
+      minute_offset: editForm.interval_minutes < 1440 ? editForm.minute_offset : null,
     })
     setEditId(null)
     load(true)
@@ -318,7 +337,7 @@ export default function HeartbeatsView({ onMutate }: Props) {
             <select
               className="hb-select"
               value={form.interval_minutes}
-              onChange={e => setForm(f => ({ ...f, interval_minutes: Number(e.target.value) }))}
+              onChange={e => setForm(f => ({ ...f, interval_minutes: Number(e.target.value), minute_offset: null }))}
             >
               {INTERVAL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
@@ -330,6 +349,18 @@ export default function HeartbeatsView({ onMutate }: Props) {
                 onChange={e => setForm(f => ({ ...f, run_at_time: e.target.value }))}
                 required
               />
+            )}
+            {offsetOptions(form.interval_minutes).length > 0 && (
+              <select
+                className="hb-select"
+                value={form.minute_offset ?? ''}
+                onChange={e => setForm(f => ({ ...f, minute_offset: e.target.value === '' ? null : Number(e.target.value) }))}
+              >
+                <option value="">Any time</option>
+                {offsetOptions(form.interval_minutes).map(o => (
+                  <option key={o.value} value={o.value}>at {o.label}</option>
+                ))}
+              </select>
             )}
             <button type="submit" className="hb-btn-primary" disabled={!form.agent_path}>Create</button>
             <button type="button" className="hb-btn-cancel" onClick={() => { setCreating(false); setForm(BLANK_FORM) }}>Cancel</button>
@@ -362,7 +393,7 @@ export default function HeartbeatsView({ onMutate }: Props) {
                   <textarea className="hb-textarea" value={editForm.prompt} onChange={e => setEditForm(f => ({ ...f, prompt: e.target.value }))} rows={4} required />
 
                   <div className="hb-form-row">
-                    <select className="hb-select" value={editForm.interval_minutes} onChange={e => setEditForm(f => ({ ...f, interval_minutes: Number(e.target.value) }))}>
+                    <select className="hb-select" value={editForm.interval_minutes} onChange={e => setEditForm(f => ({ ...f, interval_minutes: Number(e.target.value), minute_offset: null }))}>
                       {INTERVAL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                     {editForm.interval_minutes === 1440 && (
@@ -373,6 +404,18 @@ export default function HeartbeatsView({ onMutate }: Props) {
                         onChange={e => setEditForm(f => ({ ...f, run_at_time: e.target.value }))}
                         required
                       />
+                    )}
+                    {offsetOptions(editForm.interval_minutes).length > 0 && (
+                      <select
+                        className="hb-select"
+                        value={editForm.minute_offset ?? ''}
+                        onChange={e => setEditForm(f => ({ ...f, minute_offset: e.target.value === '' ? null : Number(e.target.value) }))}
+                      >
+                        <option value="">Any time</option>
+                        {offsetOptions(editForm.interval_minutes).map(o => (
+                          <option key={o.value} value={o.value}>at {o.label}</option>
+                        ))}
+                      </select>
                     )}
                     <button type="submit" className="hb-btn-primary" disabled={!editForm.agent_path}>Save</button>
                     <button type="button" className="hb-btn-cancel" onClick={() => setEditId(null)}>Cancel</button>
@@ -398,7 +441,7 @@ export default function HeartbeatsView({ onMutate }: Props) {
                   </div>
 
                   <div className="hb-card-meta">
-                    <span className="hb-meta-item">{intervalLabel(hb.interval_minutes, hb.run_at_time)}</span>
+                    <span className="hb-meta-item">{intervalLabel(hb.interval_minutes, hb.run_at_time, hb.minute_offset)}</span>
                     <span className="hb-meta-sep">·</span>
                     <span className="hb-meta-item" title={hb.last_run_at ?? undefined}>Last: {relativeTime(hb.last_run_at)}</span>
                     {hb.active === 1 && (

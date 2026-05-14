@@ -229,6 +229,7 @@ function migrate() {
   tryAlter('ALTER TABLE habits ADD COLUMN recurrence_days TEXT')
   tryAlter('ALTER TABLE agent_jobs ADD COLUMN heartbeat_id TEXT REFERENCES heartbeats(id)')
   tryAlter('ALTER TABLE heartbeats ADD COLUMN run_at_time TEXT')
+  tryAlter('ALTER TABLE heartbeats ADD COLUMN minute_offset INTEGER')
   tryAlter('ALTER TABLE tasks ADD COLUMN assigned_agent TEXT')
   tryAlter('ALTER TABLE projects ADD COLUMN is_repo INTEGER NOT NULL DEFAULT 0')
   tryAlter('ALTER TABLE projects ADD COLUMN context TEXT')
@@ -790,13 +791,22 @@ function addMinutesFromNow(minutes) {
 
 // Compute next run timestamp. For daily heartbeats with a specific time, schedules
 // the next occurrence of that local time (today if not yet passed, tomorrow if it has).
-function nextRunAt(intervalMinutes, runAtTime) {
+function nextRunAt(intervalMinutes, runAtTime, minuteOffset) {
   if (runAtTime && intervalMinutes === 1440) {
     const [h, m] = runAtTime.split(':').map(Number)
     const target = new Date()
     target.setHours(h, m, 0, 0)
     if (target <= new Date()) target.setDate(target.getDate() + 1)
     return target.toISOString().replace('T', ' ').slice(0, 19)
+  }
+  if (minuteOffset != null && intervalMinutes < 1440) {
+    const now = new Date()
+    const nowMinutes = now.getHours() * 60 + now.getMinutes()
+    const elapsed = ((nowMinutes - minuteOffset) % intervalMinutes + intervalMinutes) % intervalMinutes
+    const minutesUntilNext = elapsed === 0 ? intervalMinutes : intervalMinutes - elapsed
+    const next = new Date(now.getTime() + minutesUntilNext * 60_000)
+    next.setSeconds(0, 0)
+    return next.toISOString().replace('T', ' ').slice(0, 19)
   }
   return addMinutesFromNow(intervalMinutes)
 }
@@ -811,22 +821,23 @@ function listHeartbeats() {
   `).all()
 }
 
-function createHeartbeat({ title, description, agent_path, prompt, interval_minutes, run_at_time } = {}) {
+function createHeartbeat({ title, description, agent_path, prompt, interval_minutes, run_at_time, minute_offset } = {}) {
   if (!title || !agent_path || !prompt) throw new Error('title, agent_path, and prompt are required')
   const id = crypto.randomUUID()
   const now = nowIso()
   const mins = interval_minutes ?? 60
   const runAt = (run_at_time && mins === 1440) ? run_at_time : null
-  const firstRun = nextRunAt(mins, runAt)
+  const offset = (minute_offset != null && mins < 1440) ? minute_offset : null
+  const firstRun = nextRunAt(mins, runAt, offset)
   db.prepare(`
-    INSERT INTO heartbeats (id, title, description, agent_path, prompt, interval_minutes, run_at_time, active, next_run_at, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
-  `).run(id, title.trim(), description ?? null, agent_path.trim(), prompt.trim(), mins, runAt, firstRun, now, now)
+    INSERT INTO heartbeats (id, title, description, agent_path, prompt, interval_minutes, run_at_time, minute_offset, active, next_run_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+  `).run(id, title.trim(), description ?? null, agent_path.trim(), prompt.trim(), mins, runAt, offset, firstRun, now, now)
   return db.prepare('SELECT * FROM heartbeats WHERE id = ?').get(id)
 }
 
 function updateHeartbeat(id, fields = {}) {
-  const allowed = ['title', 'description', 'agent_path', 'prompt', 'interval_minutes', 'run_at_time']
+  const allowed = ['title', 'description', 'agent_path', 'prompt', 'interval_minutes', 'run_at_time', 'minute_offset']
   const sets = []
   const vals = []
   for (const k of allowed) {
@@ -845,12 +856,12 @@ function deleteHeartbeat(id) {
 }
 
 function toggleHeartbeat(id) {
-  const hb = db.prepare('SELECT id, active, interval_minutes, run_at_time FROM heartbeats WHERE id = ?').get(id)
+  const hb = db.prepare('SELECT id, active, interval_minutes, run_at_time, minute_offset FROM heartbeats WHERE id = ?').get(id)
   if (!hb) throw new Error('Heartbeat not found')
   if (hb.active === 1) {
     db.prepare(`UPDATE heartbeats SET active = 0, updated_at = ? WHERE id = ?`).run(nowIso(), id)
   } else {
-    const nr = nextRunAt(hb.interval_minutes, hb.run_at_time ?? null)
+    const nr = nextRunAt(hb.interval_minutes, hb.run_at_time ?? null, hb.minute_offset ?? null)
     db.prepare(`UPDATE heartbeats SET active = 1, next_run_at = ?, updated_at = ? WHERE id = ?`).run(nr, nowIso(), id)
   }
   return db.prepare('SELECT * FROM heartbeats WHERE id = ?').get(id)
@@ -869,9 +880,9 @@ function getDueHeartbeats() {
   `).all()
 }
 
-function markHeartbeatRun(id, intervalMinutes, runAtTime) {
+function markHeartbeatRun(id, intervalMinutes, runAtTime, minuteOffset) {
   const now = nowIso()
-  const nr = nextRunAt(intervalMinutes, runAtTime ?? null)
+  const nr = nextRunAt(intervalMinutes, runAtTime ?? null, minuteOffset ?? null)
   db.prepare(`UPDATE heartbeats SET last_run_at = ?, next_run_at = ?, updated_at = ? WHERE id = ?`).run(now, nr, now, id)
   return { ok: true }
 }

@@ -599,81 +599,51 @@ export default function DetailPanel({ taskId, onClose, onMutate, onDelete, termi
               </div>
             </div>
 
-            {/* Source link */}
-            {task.source_url && (
-              <a className="detail-source-link" href={task.source_url} target="_blank" rel="noreferrer">
-                ↗ {detectPlatform(task.source_url).label}
-              </a>
-            )}
-
-            {/* Extra links */}
-            {(links.length > 0 || addingLink) && (
-              <div className="detail-links-row">
-                {links.map((l, i) => {
-                  const pt = previewType(l.url)
-                  const fileName = l.url.split('/').pop() ?? l.url
-                  if (pt === 'email') return (
-                    <button
-                      key={i}
-                      className="detail-preview-btn"
-                      onClick={() => onPreview?.(l.url)}
-                      title={l.url}
-                    >
-                      <span className="detail-file-icon">✉</span>
-                      <span className="detail-file-name">{fileName}</span>
-                    </button>
-                  )
-                  if (pt === 'md') return (
-                    <button
-                      key={i}
-                      className="detail-preview-btn"
-                      onClick={() => onPreview?.(l.url)}
-                      title={l.url}
-                    >
-                      <span className="detail-file-icon">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                          <polyline points="14 2 14 8 20 8"/>
-                          <line x1="16" y1="13" x2="8" y2="13"/>
-                          <line x1="16" y1="17" x2="8" y2="17"/>
-                          <polyline points="10 9 9 9 8 9"/>
-                        </svg>
-                      </span>
-                      <span className="detail-file-name">{fileName}</span>
-                    </button>
-                  )
-                  const platform = detectPlatform(l.url)
-                  const chipLabel = l.label ?? (platform.key === 'link'
-                    ? (() => { try { return new URL(l.url).hostname.replace(/^www\./, '') } catch { return 'Link' } })()
-                    : platform.label)
-                  return (
-                    <a key={i} className="detail-platform-icon" href={l.url} target="_blank" rel="noreferrer">
-                      <PlatformIcon url={l.url} size={14} />
-                      <span className="detail-platform-label">{chipLabel}</span>
-                    </a>
-                  )
-                })}
-              </div>
-            )}
-
-            {addingLink ? (
-              <div className="detail-links-row">
-                <input
-                  ref={linkInputRef}
-                  className="add-link-input"
-                  placeholder="Paste URL…"
-                  value={linkInput}
-                  onChange={e => setLinkInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') addLink(); if (e.key === 'Escape') setAddingLink(false) }}
-                />
-                <button className="add-link-save" onClick={addLink}>Add</button>
-                <button className="add-link-cancel" onClick={() => setAddingLink(false)}>Cancel</button>
-              </div>
-            ) : (
-              <div style={{ marginBottom: 16 }}>
-                <button className="detail-add-link-btn" onClick={() => setAddingLink(true)} title="Add link">+</button>
-              </div>
-            )}
+            {/* Links section */}
+            {(() => {
+              const serviceLinks = links.filter(l => detectPlatform(l.url).key !== 'link' && !previewType(l.url))
+              const hasChips = task.source_url || serviceLinks.length > 0
+              return (
+                <>
+                  <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span className="detail-section-label" style={{ marginBottom: 0 }}>Links</span>
+                    {!addingLink && (
+                      <button className="detail-add-link-btn" onClick={() => setAddingLink(true)} title="Add link">+</button>
+                    )}
+                  </div>
+                  {addingLink && (
+                    <div className="detail-links-row" style={{ marginTop: 6 }}>
+                      <input
+                        ref={linkInputRef}
+                        className="add-link-input"
+                        placeholder="Paste URL…"
+                        value={linkInput}
+                        onChange={e => setLinkInput(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') addLink(); if (e.key === 'Escape') setAddingLink(false) }}
+                      />
+                      <button className="add-link-save" onClick={addLink}>Add</button>
+                      <button className="add-link-cancel" onClick={() => setAddingLink(false)}>Cancel</button>
+                    </div>
+                  )}
+                  {hasChips && (
+                    <div className="detail-links-row" style={{ marginTop: 6 }}>
+                      {task.source_url && (
+                        <a className="detail-platform-icon" href={task.source_url} target="_blank" rel="noreferrer">
+                          <PlatformIcon url={task.source_url} size={14} />
+                          <span className="detail-platform-label">{detectPlatform(task.source_url).label}</span>
+                        </a>
+                      )}
+                      {serviceLinks.map((l, i) => (
+                        <a key={i} className="detail-platform-icon" href={l.url} target="_blank" rel="noreferrer">
+                          <PlatformIcon url={l.url} size={14} />
+                          <span className="detail-platform-label">{l.label ?? detectPlatform(l.url).label}</span>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )
+            })()}
 
             {/* Description */}
             <div className="detail-section-label">Description</div>
@@ -691,40 +661,70 @@ export default function DetailPanel({ taskId, onClose, onMutate, onDelete, termi
             )}
             {descSaved && <span className="detail-notes-status">Saved ✓</span>}
 
-            {/* Attachments */}
-            <div style={{ marginTop: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span className="detail-section-label" style={{ marginBottom: 0 }}>Attachments</span>
-              <button
-                className="detail-attach-btn"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-                title="Attach file"
-              >{uploading ? '…' : '📎'}</button>
-            </div>
-            <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleAttach} />
-            {attachments.length > 0 && (
-              <div className="detail-attachments-list">
-                {attachments.map(a => (
-                  <div key={a.id} className="detail-attachment-row">
-                    <a
-                      className="detail-attachment-link"
-                      href={a.url ?? `/api/attachment/${a.id}/local`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {fileIcon(a.mimetype)} {a.filename}
-                      {a.size_bytes != null && (
-                        <span className="detail-attachment-size">{formatSize(a.size_bytes)}</span>
-                      )}
-                      {!a.url && !a.bucket && (
-                        <span className="detail-attachment-local" title="Local only — not uploaded to cloud">local</span>
-                      )}
-                    </a>
-                    <button className="detail-due-clear" onClick={() => handleDeleteAttachment(a.id)}>✕</button>
+            {/* Attachments — doc/URL links + uploaded files */}
+            {(() => {
+              const docLinks = links.filter(l => detectPlatform(l.url).key === 'link' || !!previewType(l.url))
+              const hasAttachments = docLinks.length > 0 || attachments.length > 0
+              return (
+                <>
+                  <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span className="detail-section-label" style={{ marginBottom: 0 }}>Attachments</span>
+                    <button
+                      className="detail-attach-btn"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      title="Attach file"
+                    >{uploading ? '…' : '📎'}</button>
                   </div>
-                ))}
-              </div>
-            )}
+                  <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={handleAttach} />
+                  {hasAttachments && (
+                    <div className="detail-attachments-list">
+                      {docLinks.map((l, i) => {
+                        const pt = previewType(l.url)
+                        const displayName = l.label ?? l.url.split('/').pop() ?? l.url
+                        const icon = pt === 'email' ? '✉' : pt === 'md'
+                          ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                          : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                        return pt ? (
+                          <div key={i} className="detail-attachment-row">
+                            <button className="detail-attachment-link" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }} onClick={() => onPreview?.(l.url)} title={l.url}>
+                              <span className="detail-attachment-size" style={{ marginRight: 6 }}>{icon}</span>
+                              {displayName}
+                            </button>
+                          </div>
+                        ) : (
+                          <div key={i} className="detail-attachment-row">
+                            <a className="detail-attachment-link" href={l.url} target="_blank" rel="noreferrer" title={l.url}>
+                              <span className="detail-attachment-size" style={{ marginRight: 6 }}>{icon}</span>
+                              {displayName}
+                            </a>
+                          </div>
+                        )
+                      })}
+                      {attachments.map(a => (
+                        <div key={a.id} className="detail-attachment-row">
+                          <a
+                            className="detail-attachment-link"
+                            href={a.url ?? `/api/attachment/${a.id}/local`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {fileIcon(a.mimetype)} {a.filename}
+                            {a.size_bytes != null && (
+                              <span className="detail-attachment-size">{formatSize(a.size_bytes)}</span>
+                            )}
+                            {!a.url && !a.bucket && (
+                              <span className="detail-attachment-local" title="Local only — not uploaded to cloud">local</span>
+                            )}
+                          </a>
+                          <button className="detail-due-clear" onClick={() => handleDeleteAttachment(a.id)}>✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )
+            })()}
 
             {/* Recurrence */}
             <div className="detail-section-label" style={{ marginTop: 20 }}>Recurrence</div>

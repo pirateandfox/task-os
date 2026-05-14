@@ -399,7 +399,7 @@ async function runDueHeartbeats() {
   const due = await dbCall('getDueHeartbeats')
   for (const hb of due) {
     await dbCall('createHeartbeatJob', hb.id)
-    await dbCall('markHeartbeatRun', hb.id, hb.interval_minutes, hb.run_at_time ?? null)
+    await dbCall('markHeartbeatRun', hb.id, hb.interval_minutes, hb.run_at_time ?? null, hb.minute_offset ?? null)
   }
 }
 

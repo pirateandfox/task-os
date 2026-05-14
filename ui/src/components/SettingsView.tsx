@@ -32,6 +32,18 @@ export default function SettingsView() {
   const [syncResult, setSyncResult] = useState<{ synced: number; failed: number; total: number } | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [rescanning, setRescanning] = useState(false)
+  const [collapsedContexts, setCollapsedContexts] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('qalatra-collapsed-contexts') ?? '[]')) }
+    catch { return new Set() }
+  })
+  const toggleContext = (ctx: string) => {
+    setCollapsedContexts(prev => {
+      const next = new Set(prev)
+      next.has(ctx) ? next.delete(ctx) : next.add(ctx)
+      localStorage.setItem('qalatra-collapsed-contexts', JSON.stringify([...next]))
+      return next
+    })
+  }
   // Encryption
   const [keyPresent, setKeyPresent] = useState(false)
   const [exportedKey, setExportedKey] = useState<string | null>(null)
@@ -559,21 +571,59 @@ export default function SettingsView() {
 
           {agents.length === 0
             ? <div style={{ fontSize: 13, color: 'var(--muted)' }}>No agents found. Set an agents scan root in General settings.</div>
-            : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {agents.map(a => (
-                  <div key={a.path} style={{ borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{a.name}</span>
-                      {a.context && <span style={{ fontSize: 11, color: 'var(--accent)' }}>{a.context}</span>}
-                      {a.project && <span style={{ fontSize: 11, color: 'var(--muted)' }}>{a.project}</span>}
-                    </div>
-                    {a.description && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{a.description}</div>}
-                    <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'monospace', marginTop: 2, opacity: 0.7 }}>{a.relativePath}</div>
+            : (() => {
+                // Group: context → project → agents
+                const byContext = new Map<string, Map<string, typeof agents>>()
+                for (const a of agents) {
+                  const ctx = a.context ?? '(no context)'
+                  const proj = a.project ?? '(no project)'
+                  if (!byContext.has(ctx)) byContext.set(ctx, new Map())
+                  const byProject = byContext.get(ctx)!
+                  if (!byProject.has(proj)) byProject.set(proj, [])
+                  byProject.get(proj)!.push(a)
+                }
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                    {[...byContext.entries()].map(([ctx, byProject]) => {
+                      const collapsed = collapsedContexts.has(ctx)
+                      return (
+                        <div key={ctx}>
+                          <button
+                            onClick={() => toggleContext(ctx)}
+                            style={{ all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, marginBottom: collapsed ? 0 : 12, width: '100%' }}
+                          >
+                            <span style={{ fontSize: 10, color: 'var(--muted)', transition: 'transform 0.15s', display: 'inline-block', transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▾</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent)' }}>{ctx}</span>
+                            <span style={{ fontSize: 11, color: 'var(--muted)' }}>({[...byProject.values()].reduce((n, g) => n + g.length, 0)})</span>
+                          </button>
+                          {!collapsed && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                              {[...byProject.entries()].map(([proj, group]) => (
+                                <div key={proj}>
+                                  {byProject.size > 1 && (
+                                    <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', marginBottom: 8, paddingBottom: 4, borderBottom: '1px solid var(--border)' }}>{proj}</div>
+                                  )}
+                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+                                    {group.map(a => (
+                                      <div key={a.path} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '11px 13px', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', lineHeight: 1.3 }}>{a.name}</div>
+                                        {a.description && (
+                                          <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.5 }}>{a.description}</div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
-                ))}
-              </div>
-            )}
+                )
+              })()
+            }
         </>}
 
       </div>

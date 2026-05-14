@@ -1,13 +1,22 @@
 import { v4 as uuidv4 } from 'uuid';
 import { openDb, nowIso } from '../db.js';
 
-function nextRunAt(intervalMinutes, runAtTime) {
+function nextRunAt(intervalMinutes, runAtTime, minuteOffset) {
   if (runAtTime && intervalMinutes === 1440) {
     const [h, m] = runAtTime.split(':').map(Number);
     const target = new Date();
     target.setHours(h, m, 0, 0);
     if (target <= new Date()) target.setDate(target.getDate() + 1);
     return target.toISOString().replace('T', ' ').slice(0, 19);
+  }
+  if (minuteOffset != null && intervalMinutes < 1440) {
+    const now = new Date();
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const elapsed = ((nowMinutes - minuteOffset) % intervalMinutes + intervalMinutes) % intervalMinutes;
+    const minutesUntilNext = elapsed === 0 ? intervalMinutes : intervalMinutes - elapsed;
+    const next = new Date(now.getTime() + minutesUntilNext * 60_000);
+    next.setSeconds(0, 0);
+    return next.toISOString().replace('T', ' ').slice(0, 19);
   }
   return new Date(Date.now() + intervalMinutes * 60_000).toISOString().replace('T', ' ').slice(0, 19);
 }
@@ -30,6 +39,7 @@ export const toolDefs = [
         prompt:           { type: 'string', description: 'The prompt sent to the Claude agent on each run' },
         interval_minutes: { type: 'number', description: 'How often to run in minutes (e.g. 5, 10, 15, 30, 60, 120, 240, 1440)' },
         run_at_time:      { type: 'string', description: 'For daily heartbeats (interval_minutes=1440): local time to run, as HH:MM (e.g. "09:00", "17:30")' },
+        minute_offset:    { type: 'number', description: 'For sub-daily heartbeats: pin runs to clock-aligned times. The heartbeat fires at every Nth minute where N ≡ minute_offset (mod interval_minutes). E.g. interval=30 offset=0 → :00 and :30; interval=30 offset=15 → :15 and :45; interval=60 offset=30 → :30 past every hour.' },
       },
       required: ['title', 'agent_path', 'prompt'],
     },
@@ -98,25 +108,26 @@ export const handlers = {
     `).all();
   },
 
-  create_heartbeat({ title, description, agent_path, prompt, interval_minutes, run_at_time } = {}) {
+  create_heartbeat({ title, description, agent_path, prompt, interval_minutes, run_at_time, minute_offset } = {}) {
     if (!title || !agent_path || !prompt) return { error: 'title, agent_path, and prompt are required' };
     const db = openDb();
     const id = uuidv4();
     const now = nowIso();
     const mins = interval_minutes ?? 60;
     const runAt = (run_at_time && mins === 1440) ? run_at_time : null;
-    const firstRun = nextRunAt(mins, runAt);
+    const offset = (minute_offset != null && mins < 1440) ? minute_offset : null;
+    const firstRun = nextRunAt(mins, runAt, offset);
     db.prepare(`
-      INSERT INTO heartbeats (id, title, description, agent_path, prompt, interval_minutes, run_at_time, active, next_run_at, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
-    `).run(id, title.trim(), description ?? null, agent_path.trim(), prompt.trim(), mins, runAt, firstRun, now, now);
+      INSERT INTO heartbeats (id, title, description, agent_path, prompt, interval_minutes, run_at_time, minute_offset, active, next_run_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+    `).run(id, title.trim(), description ?? null, agent_path.trim(), prompt.trim(), mins, runAt, offset, firstRun, now, now);
     return db.prepare('SELECT * FROM heartbeats WHERE id = ?').get(id);
   },
 
-  update_heartbeat({ id, title, description, agent_path, prompt, interval_minutes, run_at_time } = {}) {
+  update_heartbeat({ id, title, description, agent_path, prompt, interval_minutes, run_at_time, minute_offset } = {}) {
     if (!id) return { error: 'id required' };
     const db = openDb();
-    const allowed = { title, description, agent_path, prompt, interval_minutes, run_at_time };
+    const allowed = { title, description, agent_path, prompt, interval_minutes, run_at_time, minute_offset };
     const sets = [];
     const vals = [];
     for (const [k, v] of Object.entries(allowed)) {

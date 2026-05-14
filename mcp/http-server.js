@@ -79,7 +79,9 @@ async function parseBody(req) {
   });
 }
 
-const REQUEST_TIMEOUT_MS = 30_000; // 30 s — kill hung requests
+const REQUEST_TIMEOUT_MS = 20_000; // 20 s — kill hung requests
+
+const SERVER_STARTED_AT = new Date().toISOString();
 
 const httpServer = http.createServer(async (req, res) => {
   // Abort any request that hasn't completed within the timeout window.
@@ -88,7 +90,9 @@ const httpServer = http.createServer(async (req, res) => {
       res.writeHead(504, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32001, message: 'Request timeout' }, id: null }));
     }
-    req.destroy();
+    // Destroy the underlying socket so the client gets a hard close rather than
+    // waiting on an SSE channel that will never deliver a result.
+    req.socket?.destroy();
   }, REQUEST_TIMEOUT_MS);
   res.setHeader('Access-Control-Allow-Origin', 'http://localhost:5173');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
@@ -104,6 +108,17 @@ const httpServer = http.createServer(async (req, res) => {
   }
 
   const url = new URL(req.url, `http://localhost:${PORT}`);
+
+  // Health check — no session required, responds immediately. Agents can hit
+  // GET /health before a tool call to verify the server is reachable and detect
+  // restarts (started_at changes across server processes).
+  if (url.pathname === '/health') {
+    clearTimeout(timeout);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, started_at: SERVER_STARTED_AT }));
+    return;
+  }
+
   if (url.pathname !== '/mcp') {
     res.writeHead(404);
     res.end('Not found');
@@ -162,6 +177,10 @@ const httpServer = http.createServer(async (req, res) => {
 
 httpServer.keepAliveTimeout = 65_000; // slightly above typical 60 s proxy/LB timeout
 httpServer.headersTimeout   = REQUEST_TIMEOUT_MS + 1_000;
+// Socket-level backstop: if a connection has no activity for 2× the request
+// timeout, the OS forcibly closes the TCP socket. This catches cases where
+// the MCP transport holds a connection open (SSE) but never delivers a result.
+httpServer.setTimeout(REQUEST_TIMEOUT_MS * 2);
 
 httpServer.listen(PORT, () => {
   console.log(`[mcp-http] listening on port ${PORT}`);
