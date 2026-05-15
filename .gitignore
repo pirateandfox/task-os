@@ -8,6 +8,7 @@ db/tasks.db
 db/tasks.db-wal
 db/tasks.db-shm
 db/settings.json
+db/keystore
 
 # macOS
 .DS_Store
