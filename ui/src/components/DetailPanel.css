@@ -553,6 +553,18 @@
 .detail-job-status--done    { color: #22c55e; }
 .detail-job-status--failed  { color: #ef4444; }
 .detail-agent-job--failed { border-color: #ef444440; background: #ef444410; }
+.detail-resume-btn {
+  margin-left: 10px;
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  opacity: 0.8;
+}
+.detail-resume-btn:hover { opacity: 1; }
 .detail-agent-error {
   margin-top: 8px;
   font-family: 'Menlo', 'Monaco', monospace;

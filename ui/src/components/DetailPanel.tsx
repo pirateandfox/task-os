@@ -60,6 +60,7 @@ interface Props {
   onDelete?: () => void
   terminalOpen?: boolean
   onPreview?: (filePath: string) => void
+  onRunInTerminal?: (cmd: string) => void
 }
 
 function previewType(url: string): 'email' | 'md' | null {
@@ -81,7 +82,7 @@ const ENERGY_LABELS: Record<string, string> = { high: '🔥 High', medium: '⚡ 
 const TASK_TYPES = ['task', 'coding', 'reading'] as const
 const TASK_TYPE_LABELS: Record<string, string> = { task: '★ Priority', coding: '⌨ Coding', reading: '📖 Reading' }
 
-export default function DetailPanel({ taskId, onClose, onMutate, onDelete, terminalOpen, onPreview }: Props) {
+export default function DetailPanel({ taskId, onClose, onMutate, onDelete, terminalOpen, onPreview, onRunInTerminal }: Props) {
   const { contexts, getColor } = useContexts()
   const [task, setTask]       = useState<Task | null>(null)
   const [subtasks, setSubtasks] = useState<Subtask[]>([])
@@ -560,9 +561,26 @@ export default function DetailPanel({ taskId, onClose, onMutate, onDelete, termi
                 </span>
               </div>
             )}
+            {latestJob && latestJob.status === 'done' && latestJob.session_id && (
+              <div className="detail-agent-job">
+                <span className="detail-job-status detail-job-status--done">✓ Agent done</span>
+                <button
+                  className="detail-resume-btn"
+                  onClick={() => onRunInTerminal?.(task.agent_path ? `cd "${task.agent_path}" && claude --resume ${latestJob.session_id}\r` : `claude --resume ${latestJob.session_id}\r`)}
+                  title="Resume this session in the terminal"
+                >Resume session</button>
+              </div>
+            )}
             {latestJob && latestJob.status === 'failed' && (
               <div className="detail-agent-job detail-agent-job--failed">
                 <span className="detail-job-status detail-job-status--failed">✕ Agent failed</span>
+                {latestJob.session_id && (
+                  <button
+                    className="detail-resume-btn"
+                    onClick={() => onRunInTerminal?.(task.agent_path ? `cd "${task.agent_path}" && claude --resume ${latestJob.session_id}\r` : `claude --resume ${latestJob.session_id}\r`)}
+                    title="Resume this session in the terminal"
+                  >Resume session</button>
+                )}
                 {latestJob.result && (
                   <pre className="detail-agent-error">{latestJob.result}</pre>
                 )}
@@ -645,22 +663,6 @@ export default function DetailPanel({ taskId, onClose, onMutate, onDelete, termi
               )
             })()}
 
-            {/* Description */}
-            <div className="detail-section-label">Description</div>
-            <textarea
-              className="detail-notes-area"
-              value={description}
-              onChange={e => { setDescription(e.target.value); setDescDirty(true); setDescSaved(false) }}
-              onBlur={saveDescription}
-              rows={5}
-            />
-            {descDirty && (
-              <button className="detail-save-btn" style={{ display: 'inline-block' }} onClick={saveDescription}>
-                Save
-              </button>
-            )}
-            {descSaved && <span className="detail-notes-status">Saved ✓</span>}
-
             {/* Attachments — doc/URL links + uploaded files */}
             {(() => {
               const docLinks = links.filter(l => detectPlatform(l.url).key === 'link' || !!previewType(l.url))
@@ -725,6 +727,22 @@ export default function DetailPanel({ taskId, onClose, onMutate, onDelete, termi
                 </>
               )
             })()}
+
+            {/* Description */}
+            <div className="detail-section-label" style={{ marginTop: 20 }}>Description</div>
+            <textarea
+              className="detail-notes-area"
+              value={description}
+              onChange={e => { setDescription(e.target.value); setDescDirty(true); setDescSaved(false) }}
+              onBlur={saveDescription}
+              rows={5}
+            />
+            {descDirty && (
+              <button className="detail-save-btn" style={{ display: 'inline-block' }} onClick={saveDescription}>
+                Save
+              </button>
+            )}
+            {descSaved && <span className="detail-notes-status">Saved ✓</span>}
 
             {/* Recurrence */}
             <div className="detail-section-label" style={{ marginTop: 20 }}>Recurrence</div>

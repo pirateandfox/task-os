@@ -413,6 +413,11 @@ export const handlers = {
     updates.last_touched_ai = nowIso();
     setClauses.push('last_touched_ai = @last_touched_ai');
 
+    if (args.status === 'done' && task.status !== 'done') {
+      updates.last_touched_human = nowIso();
+      setClauses.push('last_touched_human = @last_touched_human');
+    }
+
     updates.task_id = args.task_id;
     db.prepare(`UPDATE tasks SET ${setClauses.join(', ')} WHERE id = @task_id`).run(updates);
 

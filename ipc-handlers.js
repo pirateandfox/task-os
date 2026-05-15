@@ -331,7 +331,7 @@ async function processAgentJobs() {
 
     proc.stdout.on('data', d => { stdout += d })
     proc.stderr.on('data', d => { stderr += d })
-    const timeout = setTimeout(() => { timedOut = true; proc.kill('SIGKILL') }, 15 * 60 * 1000)
+    const timeout = setTimeout(() => { timedOut = true; proc.kill('SIGKILL') }, (cfg?.timeout_minutes ?? 15) * 60 * 1000)
     proc.on('close', async code => {
       if (settled) return
       settled = true

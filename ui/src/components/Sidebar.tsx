@@ -49,7 +49,7 @@ export default function Sidebar({
           >
             <span className="sidebar-icon">{item.icon}</span>
             <span className="sidebar-label">{item.label}</span>
-            {item.key === 'code' && activeAgentCount > 0 && (
+            {item.key === 'priority' && activeAgentCount > 0 && (
               <span className="sidebar-badge">{activeAgentCount}</span>
             )}
           </button>

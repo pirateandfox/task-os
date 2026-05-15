@@ -304,6 +304,7 @@ function AppInner() {
             }}
             terminalOpen={terminalMode !== 'closed'}
             onPreview={path => path.endsWith('.md') ? setMdPath(path) : setPreviewPath(path)}
+            onRunInTerminal={cmd => { setTerminalCommand(cmd); setTerminalMode(m => m === 'closed' ? 'docked' : m) }}
           />
         </div>
 
